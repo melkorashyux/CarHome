@@ -59,6 +59,28 @@ Pick one:
 
 ---
 
+## Default wallpaper
+
+Put one image at `app/src/main/res/drawable-nodpi/wallpaper_default.jpg` (the name must be exactly
+`wallpaper_default`, lowercase, `.jpg` or `.png`). Best size: **2048×1200**, the 2x export of your
+1024×600 frame. It shows until you pick a photo in Settings → Wallpaper, and
+Settings → **Use default wallpaper** switches back to it.
+
+## Software updates from the car
+
+Settings → **Software update** checks GitHub Releases, downloads the new APK and opens the installer.
+
+1. Set `REPO` in `app/src/main/java/dev/carhome/launcher/update/Updater.kt` to your
+   `owner/repository`. **It must be a public repository.** To keep your code private, make a
+   second public repository just for releases (for example `CarHome-releases`) and point `REPO` at that.
+2. For each new version: raise `versionCode` and `versionName` in `app/build.gradle.kts`, build a
+   **signed** APK with your key, and publish a GitHub release tagged `v` + versionName (for example `v0.3`)
+   with the APK attached.
+3. The first time, Android asks you to allow Car Home to install apps. Allow it, go back, and tap
+   **Install** again.
+
+---
+
 ## How the design maps to the code
 
 | Figma | Code |

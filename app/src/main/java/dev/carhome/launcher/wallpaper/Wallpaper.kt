@@ -48,9 +48,36 @@ object Wallpaper {
         }
     }
 
+    /** Your chosen photo if there is one, otherwise the built-in default wallpaper. */
     suspend fun load(context: Context): Bitmap? = withContext(Dispatchers.IO) {
         val f = file(context)
-        if (!f.exists()) null else BitmapFactory.decodeFile(f.path)?.let(::centerCrop)
+        val bitmap = if (f.exists()) {
+            BitmapFactory.decodeFile(f.path)
+        } else {
+            defaultResId(context)?.let { id ->
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeResource(context.resources, id, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 1600 && bounds.outHeight / (sample * 2) >= 900) sample *= 2
+                BitmapFactory.decodeResource(context.resources, id, BitmapFactory.Options().apply { inSampleSize = sample })
+            }
+        }
+        bitmap?.let(::centerCrop)
+    }
+
+    /**
+     * The default wallpaper: app/src/main/res/drawable-nodpi/wallpaper_default.jpg
+     * Looked up by name so the app still builds if the file isn't there yet.
+     */
+    @Suppress("DiscouragedApi")
+    fun defaultResId(context: Context): Int? =
+        context.resources.getIdentifier("wallpaper_default", "drawable", context.packageName).takeIf { it != 0 }
+
+    fun hasCustom(context: Context) = file(context).exists()
+
+    /** Forgets your chosen photo so the default wallpaper shows again. */
+    suspend fun resetToDefault(context: Context) = withContext(Dispatchers.IO) {
+        file(context).delete()
     }
 
     /**

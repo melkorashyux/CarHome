@@ -12,8 +12,8 @@ android {
         applicationId = "dev.carhome.launcher"
         minSdk = 29          // Android 10, the head unit's version
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
     }
 
     buildTypes {

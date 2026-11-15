@@ -30,7 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,9 +52,11 @@ import dev.carhome.launcher.ui.glass.rowPress
 import dev.carhome.launcher.ui.theme.Fg
 import dev.carhome.launcher.ui.theme.Muted
 import dev.carhome.launcher.ui.theme.Type
+import dev.carhome.launcher.update.Updater
 import dev.carhome.launcher.util.Launch
 import dev.carhome.launcher.wallpaper.Wallpaper
 import kotlinx.coroutines.launch
+import java.io.File
 
 private val SwitchGreen = Color(0xFF34C759) // iOS "on" green
 
@@ -65,6 +70,9 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) 
     val autoSwitch by prefs.autoSwitch.collectAsState()
     val media by MediaRepository.state.collectAsState()
     val wallpaper = LocalBackdrop.current.wallpaper
+    val wallpaperVersion by prefs.wallpaperVersion.collectAsState()
+    val hasCustomWallpaper = remember(wallpaperVersion) { Wallpaper.hasCustom(context) }
+    val hasDefaultWallpaper = remember { Wallpaper.defaultResId(context) != null }
 
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
@@ -87,6 +95,15 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) 
                     } else {
                         Box(Modifier.size(96.dp, 56.dp).clip(Rounded8).background(Color.White.copy(alpha = 0.08f)))
                     }
+                }
+                if (hasCustomWallpaper && hasDefaultWallpaper) {
+                    Divider()
+                    LinkRow("Use default wallpaper", null, onClick = {
+                        scope.launch {
+                            Wallpaper.resetToDefault(context)
+                            prefs.bumpWallpaper()
+                        }
+                    })
                 }
                 Divider()
                 Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -129,15 +146,91 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) 
                 Divider()
                 LinkRow("Android settings", null, onClick = { Launch.settings(context, Settings.ACTION_SETTINGS) })
                 Divider()
-                val version = try {
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                } catch (e: Exception) {
-                    null
-                }
-                LinkRow("Version", version, onClick = null)
+                UpdateRow()
             }
         }
     }
+}
+
+/** What the "Software update" row is doing right now. */
+private sealed interface UpdateUi {
+    data object Idle : UpdateUi
+    data object Checking : UpdateUi
+    data object UpToDate : UpdateUi
+    data class Available(val version: String, val url: String) : UpdateUi
+    data class Downloading(val version: String, val progress: Float) : UpdateUi
+    data class Ready(val version: String, val file: File) : UpdateUi
+    data class Failed(val message: String) : UpdateUi
+}
+
+/**
+ * One row that walks through the whole update:
+ * Check for updates → Version X available → Downloading → Install.
+ */
+@Composable
+private fun UpdateRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val current = remember { Updater.currentVersion(context) }
+    var state by remember { mutableStateOf<UpdateUi>(UpdateUi.Idle) }
+
+    val check: () -> Unit = {
+        state = UpdateUi.Checking
+        scope.launch {
+            state = when (val result = Updater.check(context)) {
+                is Updater.Check.Available -> UpdateUi.Available(result.version, result.url)
+                is Updater.Check.UpToDate -> UpdateUi.UpToDate
+                is Updater.Check.Failed -> UpdateUi.Failed(result.message)
+            }
+        }
+    }
+
+    val s = state
+    val value: String
+    val onClick: (() -> Unit)?
+    when (s) {
+        UpdateUi.Idle -> {
+            value = "Version $current"
+            onClick = check
+        }
+        UpdateUi.Checking -> {
+            value = "Checking…"
+            onClick = null
+        }
+        UpdateUi.UpToDate -> {
+            value = "Up to date ($current)"
+            onClick = check
+        }
+        is UpdateUi.Available -> {
+            value = "Version ${s.version} available · Download"
+            onClick = {
+                state = UpdateUi.Downloading(s.version, 0f)
+                scope.launch {
+                    val file = Updater.download(context, s.url) { p -> state = UpdateUi.Downloading(s.version, p) }
+                    state = if (file != null) {
+                        Updater.install(context, file)
+                        UpdateUi.Ready(s.version, file)
+                    } else {
+                        UpdateUi.Failed("Download failed")
+                    }
+                }
+            }
+        }
+        is UpdateUi.Downloading -> {
+            value = "Downloading ${(s.progress * 100).toInt()}%"
+            onClick = null
+        }
+        is UpdateUi.Ready -> {
+            value = "Install version ${s.version}"
+            onClick = { Updater.install(context, s.file) }
+        }
+        is UpdateUi.Failed -> {
+            value = "${s.message} · Try again"
+            onClick = check
+        }
+    }
+
+    LinkRow("Software update", value, onClick = onClick)
 }
 
 @Composable
