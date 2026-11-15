@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Car Home's own file browser reads map files and wallpapers from USB sticks. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
     <!-- Lets the Apps screen list every installed app on newer Android versions too. -->
     <queries>
         <intent>
@@ -20,6 +23,7 @@
     <application
         android:name=".CarHomeApp"
         android:label="Car Home"
+        android:requestLegacyExternalStorage="true"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
 
         <activity

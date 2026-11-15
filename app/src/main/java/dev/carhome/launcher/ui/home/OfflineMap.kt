@@ -12,7 +12,12 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.os.Handler
+import android.os.Looper
+import androidx.compose.runtime.LaunchedEffect
+import dev.carhome.launcher.map.MapGuard
 import dev.carhome.launcher.map.MapStore
+import dev.carhome.launcher.util.CrashLog
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
@@ -29,18 +34,36 @@ import org.maplibre.android.maps.Style
  * a tap opens your navigation app instead.
  */
 @Composable
-fun OfflineMap(modifier: Modifier, locationGranted: Boolean, onTap: () -> Unit) {
+fun OfflineMap(modifier: Modifier, locationGranted: Boolean, onTap: () -> Unit, onFailed: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnTap = rememberUpdatedState(onTap)
 
     val mapView = remember {
-        // Texture mode lets the map be clipped to the rounded corners like everything else.
-        val options = MapLibreMapOptions.createFromAttributes(context).textureMode(true)
-        MapView(context, options).apply {
-            onCreate(null)
-            getMapAsync { map -> setUp(context, map, locationGranted) { currentOnTap.value() } }
+        // Mark the start, so a crash here can't turn into a crash loop (see MapGuard).
+        MapGuard.markStarting(context)
+        try {
+            // Texture mode lets the map be clipped to the rounded corners like everything else.
+            val options = MapLibreMapOptions.createFromAttributes(context).textureMode(true)
+            MapView(context, options).apply {
+                onCreate(null)
+                getMapAsync { map ->
+                    try {
+                        setUp(context, map, locationGranted) { currentOnTap.value() }
+                    } catch (e: Exception) {
+                        CrashLog.record(context, e)
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            CrashLog.record(context, e)
+            null
         }
+    }
+
+    if (mapView == null) {
+        LaunchedEffect(Unit) { onFailed() }
+        return
     }
 
     // Keep the map's own lifecycle in step with the screen's.
@@ -90,6 +113,8 @@ private fun setUp(context: Context, map: MapLibreMap, locationGranted: Boolean, 
         .build()
 
     map.setStyle(Style.Builder().fromJson(MapStore.styleJson(context))) { style ->
+        // Style loaded: give it a few seconds of drawing, then call the start a success.
+        Handler(Looper.getMainLooper()).postDelayed({ MapGuard.markStarted(context) }, 4_000L)
         if (!locationGranted) return@setStyle
         try {
             map.locationComponent.apply {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
+import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Handler
@@ -40,6 +41,8 @@ object MediaRepository {
     private var appContext: Context? = null
     private var manager: MediaSessionManager? = null
     private var controllers: List<MediaController> = emptyList()
+    /** Sessions found only through a player's notification, keyed by that notification. */
+    private val fromNotifications = linkedMapOf<String, MediaController>()
     private var current: MediaController? = null
 
     private val sessionsListener =
@@ -98,9 +101,44 @@ object MediaRepository {
 
     private fun setControllers(list: List<MediaController>) {
         controllers.forEach { it.unregisterCallback(callback) }
-        controllers = list
+        // Merge in sessions found through notifications, without duplicates.
+        val merged = list + fromNotifications.values.filter { n -> list.none { it.sessionToken == n.sessionToken } }
+        controllers = merged
         controllers.forEach { it.registerCallback(callback, main) }
         select()
+    }
+
+    /**
+     * Some players (often a head unit's own Bluetooth music app) don't list their session
+     * with Android but do attach it to their notification. Car Home picks it up from there.
+     */
+    fun addFromNotification(context: Context, key: String, token: MediaSession.Token) {
+        if (fromNotifications[key]?.sessionToken == token) return
+        try {
+            fromNotifications[key] = MediaController(context.applicationContext, token)
+            refresh()
+        } catch (e: Exception) {
+            // Not a usable session.
+        }
+    }
+
+    fun removeFromNotification(key: String) {
+        if (fromNotifications.remove(key) != null) refresh()
+    }
+
+    /** For Settings → Diagnostics: every player Car Home can see right now. */
+    fun describePlayers(): List<String> = controllers.map { c ->
+        val state = when (c.playbackState?.state) {
+            PlaybackState.STATE_PLAYING -> "playing"
+            PlaybackState.STATE_PAUSED -> "paused"
+            PlaybackState.STATE_BUFFERING -> "buffering"
+            PlaybackState.STATE_STOPPED -> "stopped"
+            null -> "no state"
+            else -> "state ${c.playbackState?.state}"
+        }
+        val title = c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "no title"
+        val via = if (fromNotifications.values.any { it.sessionToken == c.sessionToken }) " (via notification)" else ""
+        "${c.packageName} · $state · $title$via"
     }
 
     /** Prefer the player that's actually playing, otherwise keep the last one. */

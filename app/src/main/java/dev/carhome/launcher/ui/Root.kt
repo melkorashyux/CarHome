@@ -31,6 +31,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import dev.carhome.launcher.data.AppSlot
+import dev.carhome.launcher.data.Imports
+import dev.carhome.launcher.ui.files.FileKind
+import dev.carhome.launcher.ui.files.FilePickerScreen
 import dev.carhome.launcher.data.Prefs
 import dev.carhome.launcher.media.MediaRepository
 import dev.carhome.launcher.nav.NavRepository
@@ -52,6 +55,7 @@ sealed interface Screen {
     data object Apps : Screen
     data object Settings : Screen
     data object TimeZone : Screen
+    data class PickFile(val kind: FileKind) : Screen
     data class PickApp(val slot: AppSlot, val returnTo: Screen) : Screen
 }
 
@@ -82,7 +86,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
     BackHandler(enabled = screen != Screen.Home) {
         screen = when (val s = screen) {
             is Screen.PickApp -> s.returnTo
-            Screen.TimeZone -> Screen.Settings
+            Screen.TimeZone, is Screen.PickFile -> Screen.Settings
             else -> Screen.Home
         }
     }
@@ -148,6 +152,19 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                             onBack = { screen = Screen.Home },
                             onPick = { slot -> screen = Screen.PickApp(slot, Screen.Settings) },
                             onOpenTimeZone = { screen = Screen.TimeZone },
+                            onPickFile = { kind -> screen = Screen.PickFile(kind) },
+                        )
+
+                        is Screen.PickFile -> FilePickerScreen(
+                            kind = s.kind,
+                            onBack = { screen = Screen.Settings },
+                            onPicked = { file ->
+                                when (s.kind) {
+                                    FileKind.Map -> Imports.importMap(context, file, prefs)
+                                    FileKind.Wallpaper -> Imports.importWallpaper(context, file, prefs)
+                                }
+                                screen = Screen.Settings
+                            },
                         )
 
                         Screen.TimeZone -> TimeZoneScreen(

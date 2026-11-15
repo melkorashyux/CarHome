@@ -43,10 +43,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.carhome.launcher.data.AppSlot
 import dev.carhome.launcher.data.Prefs
+import dev.carhome.launcher.data.ImportState
+import dev.carhome.launcher.data.Imports
 import dev.carhome.launcher.map.MapStore
+import dev.carhome.launcher.ui.files.FileKind
+import dev.carhome.launcher.util.CrashLog
 import dev.carhome.launcher.media.MediaRepository
+import dev.carhome.launcher.media.NotificationDiagnostics
 import dev.carhome.launcher.time.TimeSync
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
@@ -67,7 +73,13 @@ private val SwitchGreen = Color(0xFF34C759) // iOS "on" green
 
 /** Grouped settings list in the style of iOS Settings, on the same glass. */
 @Composable
-fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, onOpenTimeZone: () -> Unit) {
+fun SettingsScreen(
+    prefs: Prefs,
+    onBack: () -> Unit,
+    onPick: (AppSlot) -> Unit,
+    onOpenTimeZone: () -> Unit,
+    onPickFile: (FileKind) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val glass by prefs.glass.collectAsState()
@@ -79,11 +91,7 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, 
     val hasCustomWallpaper = remember(wallpaperVersion) { Wallpaper.hasCustom(context) }
     val hasDefaultWallpaper = remember { Wallpaper.defaultResId(context) != null }
 
-    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) scope.launch {
-            if (Wallpaper.importFrom(context, uri)) prefs.bumpWallpaper()
-        }
-    }
+    val wallpaperImport by Imports.wallpaper.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         ScreenHeader("Settings", onBack)
@@ -94,7 +102,12 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, 
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Section("Display") {
-                LinkRow("Wallpaper", "Choose photo", onClick = { pickPhoto.launch("image/*") }) {
+                val wallpaperValue = when (val w = wallpaperImport) {
+                    is ImportState.Copying -> "Loading…"
+                    is ImportState.Error -> "${w.message} · Try again"
+                    ImportState.Idle -> "Choose photo"
+                }
+                LinkRow("Wallpaper", wallpaperValue, onClick = { onPickFile(FileKind.Wallpaper) }) {
                     if (wallpaper != null) {
                         Image(wallpaper, null, Modifier.size(96.dp, 56.dp).clip(Rounded8), contentScale = ContentScale.Crop)
                     } else {
@@ -149,7 +162,7 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, 
                 "Offline map",
                 footer = "Make the map file on your computer (see README), copy it to a USB stick, then import it here.",
             ) {
-                OfflineMapRow(prefs)
+                OfflineMapRow(prefs, onPickFile)
             }
 
             Section("Home") {
@@ -177,6 +190,8 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, 
                 Divider()
                 UpdateRow()
             }
+
+            DiagnosticsSection()
         }
     }
 }
@@ -207,39 +222,94 @@ private fun TimeSyncRow(internetTime: Boolean) {
     LinkRow("Time sync", value, onClick = { TimeSync.syncNow(context) })
 }
 
-/** Import or replace the offline map file, with progress. */
+/** Import, replace or remove the offline map file, with progress. */
 @Composable
-private fun OfflineMapRow(prefs: Prefs) {
+private fun OfflineMapRow(prefs: Prefs, onPickFile: (FileKind) -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val mapVersion by prefs.mapVersion.collectAsState()
-    var progress by remember { mutableStateOf<Float?>(null) }
-    var failed by remember { mutableStateOf(false) }
-    val installed = remember(mapVersion) { MapStore.isInstalled(context) }
-    val size = remember(mapVersion) { MapStore.sizeMb(context) }
+    val state by Imports.map.collectAsState()
+    var removed by remember { mutableStateOf(0) }
+    val installed = remember(mapVersion, removed) { MapStore.isInstalled(context) }
+    val size = remember(mapVersion, removed) { MapStore.sizeMb(context) }
 
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            failed = false
-            progress = 0f
-            scope.launch {
-                val ok = MapStore.import(context, uri) { p -> progress = p }
-                progress = null
-                if (ok) prefs.bumpMap() else failed = true
+    val value = when (val s = state) {
+        is ImportState.Copying -> s.progress?.let { "Copying ${(it * 100).toInt()}%" } ?: "Copying…"
+        is ImportState.Error -> "${s.message} · Try again"
+        ImportState.Idle -> if (installed) "Installed · $size MB · Replace" else "Not installed · Import"
+    }
+    val busy = state is ImportState.Copying
+    LinkRow("Map file", value, onClick = if (busy) null else {
+        { onPickFile(FileKind.Map) }
+    })
+    if (installed && !busy) {
+        Divider()
+        LinkRow("Remove map", null, onClick = {
+            MapStore.remove(context)
+            removed++
+            prefs.bumpMap()
+        })
+    }
+}
+
+/**
+ * What Car Home can see of music players and ongoing notifications. With music playing,
+ * a photo of this shows how the unit's player reports itself.
+ */
+@Composable
+private fun MediaDiagnostics() {
+    val media by MediaRepository.state.collectAsState()
+    val notifications by NotificationDiagnostics.lines.collectAsState()
+    var expanded by remember { mutableStateOf(false) }
+    LinkRow("Music players seen", if (expanded) "Hide" else "Show", onClick = { expanded = !expanded })
+    if (expanded) {
+        val players = MediaRepository.describePlayers()
+        val text = buildString {
+            append("Notification access: ").append(if (media.hasAccess) "allowed" else "NOT allowed").append("\n\n")
+            append("Media players:\n")
+            if (players.isEmpty()) append("   none\n") else players.forEach { append("   ").append(it).append("\n") }
+            append("\nOngoing notifications:\n")
+            if (notifications.isEmpty()) append("   none\n") else notifications.forEach { append("   ").append(it).append("\n") }
+        }
+        Divider()
+        Text(
+            text,
+            style = Type.body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = Fg),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        )
+    }
+}
+
+/** The last error Car Home hit, kept on the unit so it can be photographed and fixed. */
+@Composable
+private fun DiagnosticsSection() {
+    val context = LocalContext.current
+    var version by remember { mutableStateOf(0) }
+    val log = remember(version) { CrashLog.read(context) }
+    var expanded by remember { mutableStateOf(false) }
+
+    Section("Diagnostics", footer = "Stays on the unit. A photo of this helps fix problems.") {
+        MediaDiagnostics()
+        Divider()
+        if (log == null) {
+            LinkRow("Last error", "None", onClick = null)
+        } else {
+            LinkRow("Last error", if (expanded) "Hide" else "Show", onClick = { expanded = !expanded })
+            if (expanded) {
+                Divider()
+                Text(
+                    log,
+                    style = Type.body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = Fg),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                )
+                Divider()
+                LinkRow("Clear", null, onClick = {
+                    CrashLog.clear(context)
+                    expanded = false
+                    version++
+                })
             }
         }
     }
-
-    val p = progress
-    val value = when {
-        p != null -> "Copying ${(p * 100).toInt()}%"
-        failed -> "That isn't a .pmtiles map file · Try again"
-        installed -> "Installed · $size MB · Replace"
-        else -> "Not installed · Import"
-    }
-    LinkRow("Map file", value, onClick = if (p == null) {
-        { pick.launch("*/*") }
-    } else null)
 }
 
 /** What the "Software update" row is doing right now. */

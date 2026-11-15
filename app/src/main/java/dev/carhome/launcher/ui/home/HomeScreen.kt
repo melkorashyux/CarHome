@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.carhome.launcher.data.AppSlot
 import dev.carhome.launcher.data.Prefs
+import dev.carhome.launcher.map.MapGuard
 import dev.carhome.launcher.map.MapStore
 import dev.carhome.launcher.media.MediaRepository
 import dev.carhome.launcher.media.MediaState
@@ -348,10 +349,28 @@ private fun NavPanel(nav: NavState, hasMap: Boolean, mapVersion: Long, locationG
             .clip(Rounded8)
             .background(Color(0xFF15171B))
     ) {
-        if (hasMap) {
+        val context = LocalContext.current
+        // If the map crashed last time, wait for a tap instead of crashing again.
+        var mapBlocked by remember(mapVersion) { mutableStateOf(MapGuard.lastStartFailed(context)) }
+        if (hasMap && mapBlocked) {
+            Column(
+                Modifier.align(Alignment.Center).padding(16.dp).pressable(onClick = {
+                    MapGuard.reset(context)
+                    mapBlocked = false
+                }),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Outlined.Navigation, null, tint = Placeholder, modifier = Modifier.size(56.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "The map couldn't start\nTap to try again · details in\nSettings → Diagnostics",
+                    style = Type.body, textAlign = TextAlign.Center,
+                )
+            }
+        } else if (hasMap) {
             // key() rebuilds the map when a new map file is imported or location is allowed.
             androidx.compose.runtime.key(mapVersion, locationGranted) {
-                OfflineMap(Modifier.fillMaxSize(), locationGranted, onTap = onOpen)
+                OfflineMap(Modifier.fillMaxSize(), locationGranted, onTap = onOpen, onFailed = { mapBlocked = true })
             }
             Text(
                 "© OpenStreetMap",

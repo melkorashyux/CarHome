@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.carhome.launcher.util.CrashLog
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -42,7 +43,9 @@ object Wallpaper {
 
             FileOutputStream(file(context)).use { upright.compress(Bitmap.CompressFormat.JPEG, 92, it) }
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Includes running out of memory on a huge photo: report it instead of crashing.
+            CrashLog.record(context, e)
             false
         }
     }
