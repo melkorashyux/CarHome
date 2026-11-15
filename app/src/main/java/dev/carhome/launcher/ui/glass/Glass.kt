@@ -41,14 +41,31 @@ import kotlin.math.roundToInt
 val Pill = RoundedCornerShape(percent = 50)
 val Rounded8 = RoundedCornerShape(8.dp)
 
-/** What every glass panel needs to draw itself: the frosted wallpaper and where the canvas is. */
+/**
+ * What every glass panel needs to draw itself: the frosted wallpaper, and where the
+ * wallpaper sits on screen ([imageOffset]/[imageSize], relative to [origin]) so the
+ * piece behind each panel lines up exactly with the photo around it.
+ */
 data class Backdrop(
     val wallpaper: ImageBitmap? = null,
     val blurred: ImageBitmap? = null,
     val tint: Float = 0.2f,
     val origin: Offset = Offset.Zero,
-    val size: IntSize = IntSize.Zero,
+    val imageOffset: IntOffset = IntOffset.Zero,
+    val imageSize: IntSize = IntSize.Zero,
 )
+
+/**
+ * Where an image of [imageW]×[imageH] goes to cover a [boxW]×[boxH] area completely
+ * (zooming in and centering, like ContentScale.Crop).
+ */
+fun coverRect(imageW: Int, imageH: Int, boxW: Int, boxH: Int): Pair<IntOffset, IntSize> {
+    if (imageW <= 0 || imageH <= 0) return IntOffset.Zero to IntSize(boxW, boxH)
+    val scale = maxOf(boxW.toFloat() / imageW, boxH.toFloat() / imageH)
+    val w = (imageW * scale).roundToInt()
+    val h = (imageH * scale).roundToInt()
+    return IntOffset((boxW - w) / 2, (boxH - h) / 2) to IntSize(w, h)
+}
 
 val LocalBackdrop = compositionLocalOf { Backdrop() }
 
@@ -81,15 +98,19 @@ fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Panel): Modifier
             .clip(shape)
             .drawBehind {
                 val img = backdrop.blurred
-                if (img != null && backdrop.size.width > 0) {
-                    // Draw the whole frosted wallpaper, shifted so the part behind this panel lines up.
+                if (img != null && backdrop.imageSize.width > 0) {
+                    // Draw the whole frosted wallpaper exactly where the sharp one is,
+                    // shifted so the part behind this panel lines up.
                     val rel = position - backdrop.origin
                     drawImage(
                         image = img,
                         srcOffset = IntOffset.Zero,
                         srcSize = IntSize(img.width, img.height),
-                        dstOffset = IntOffset(-rel.x.roundToInt(), -rel.y.roundToInt()),
-                        dstSize = backdrop.size,
+                        dstOffset = IntOffset(
+                            backdrop.imageOffset.x - rel.x.roundToInt(),
+                            backdrop.imageOffset.y - rel.y.roundToInt(),
+                        ),
+                        dstSize = backdrop.imageSize,
                         filterQuality = FilterQuality.Medium,
                     )
                 }

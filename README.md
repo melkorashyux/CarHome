@@ -1,4 +1,4 @@
-# Car Home: build 0.1
+# Car Home
 
 A custom home screen (launcher) for the Android 10 head unit, built from your Figma design.
 
@@ -78,6 +78,37 @@ Settings → **Software update** checks GitHub Releases, downloads the new APK a
    with the APK attached.
 3. The first time, Android asks you to allow Car Home to install apps. Allow it, go back, and tap
    **Install** again.
+
+---
+
+## Offline map (0.3+)
+
+The Navigation tab shows a dark map with your position, fully offline. The map data is one
+file you make once on your computer, then import on the unit.
+
+**1. Get the `pmtiles` tool** (Linux): download the latest `go-pmtiles` release for Linux
+x86_64 from github.com/protomaps/go-pmtiles/releases, unpack it, and open a terminal in that folder.
+
+**2. Cut out Egypt** from the latest OpenStreetMap build. Find today's build date on
+maps.protomaps.com/builds (format `YYYYMMDD`), then run:
+```
+./pmtiles extract https://build.protomaps.com/YYYYMMDD.pmtiles egypt.pmtiles --bbox=24.7,22.0,36.9,31.7
+```
+It downloads only Egypt's part. Expect a few hundred MB. To make a smaller file, use a smaller
+box: Greater Cairo only is `--bbox=30.8,29.8,31.8,30.4`.
+
+**3. Import it:** copy `egypt.pmtiles` to a USB stick, then on the unit open
+Car Home → Settings → Offline map → **Map file** and pick it. To update the map later,
+make a new file the same way and import it again.
+
+## Clock
+
+The unit's own clock can reset when the car is off. Once per drive, Car Home corrects its
+clock from the first GPS fix (fully offline, needs location permission), then stops.
+**Internet time** (Settings → Clock, off by default) adds an internet time server as a fallback
+for when GPS has no fix. With it off, Car Home only goes online when you tap Software update.
+Settings → Clock also shows the last sync and lets you set the time zone (Egypt: Africa/Cairo).
+Android only lets system apps change the unit's own clock, so other apps still show the unit's time.
 
 ---
 

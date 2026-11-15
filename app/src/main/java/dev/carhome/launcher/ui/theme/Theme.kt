@@ -4,10 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -18,7 +16,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.carhome.launcher.R
 import kotlin.math.min
@@ -61,15 +58,20 @@ object Type {
 }
 
 /**
- * Lays everything out on a fixed 1024×600 canvas and scales it to the real screen,
- * so 1 unit in Figma is exactly 1dp here whatever density the unit reports.
+ * Lays everything out in Figma units (1 unit = 1dp) on a canvas of at least 1024×600,
+ * scaled to fill the real screen edge to edge whatever density or shape it reports.
+ * On a wider screen the canvas just gets wider (the bottom buttons stretch to fill);
+ * on exactly 1024×600 it matches the Figma frame 1:1.
  */
 @Composable
 fun DesignCanvas(content: @Composable () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
-        val scale = min(constraints.maxWidth / 1024f, constraints.maxHeight / 600f)
+        val w = constraints.maxWidth.toFloat()
+        val h = constraints.maxHeight.toFloat()
+        // Scale so the canvas is never smaller than 1024×600 in either direction.
+        val scale = min(w / 1024f, h / 600f)
         CompositionLocalProvider(LocalDensity provides Density(density = scale, fontScale = 1f)) {
-            Box(Modifier.size(1024.dp, 600.dp).align(Alignment.Center)) { content() }
+            Box(Modifier.fillMaxSize()) { content() }
         }
     }
 }

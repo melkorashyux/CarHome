@@ -1,5 +1,6 @@
 package dev.carhome.launcher.ui.settings
 
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +45,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.carhome.launcher.data.AppSlot
 import dev.carhome.launcher.data.Prefs
+import dev.carhome.launcher.map.MapStore
 import dev.carhome.launcher.media.MediaRepository
+import dev.carhome.launcher.time.TimeSync
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.LocalBackdrop
@@ -55,6 +59,7 @@ import dev.carhome.launcher.ui.theme.Type
 import dev.carhome.launcher.update.Updater
 import dev.carhome.launcher.util.Launch
 import dev.carhome.launcher.wallpaper.Wallpaper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -62,7 +67,7 @@ private val SwitchGreen = Color(0xFF34C759) // iOS "on" green
 
 /** Grouped settings list in the style of iOS Settings, on the same glass. */
 @Composable
-fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) {
+fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit, onOpenTimeZone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val glass by prefs.glass.collectAsState()
@@ -119,8 +124,32 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) 
                         ),
                     )
                 }
+            }
+
+            Section(
+                "Clock",
+                footer = "The unit's clock can reset when the car is off, so Car Home sets its clock once per drive from GPS. " +
+                    "Internet time is a fallback for when GPS has no fix; with it off, nothing leaves the car.",
+            ) {
+                val internetTime by prefs.internetTime.collectAsState()
+                TimeSyncRow(internetTime)
+                Divider()
+                SwitchRow("Internet time", internetTime) { on ->
+                    prefs.setInternetTime(on)
+                    TimeSync.start(context, on)
+                }
+                Divider()
+                val zone by prefs.timeZone.collectAsState()
+                LinkRow("Time zone", zone ?: "Automatic (${java.time.ZoneId.systemDefault().id})", onClick = onOpenTimeZone)
                 Divider()
                 SwitchRow("24-hour clock", use24h, prefs::setUse24h)
+            }
+
+            Section(
+                "Offline map",
+                footer = "Make the map file on your computer (see README), copy it to a USB stick, then import it here.",
+            ) {
+                OfflineMapRow(prefs)
             }
 
             Section("Home") {
@@ -150,6 +179,67 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onPick: (AppSlot) -> Unit) 
             }
         }
     }
+}
+
+/** Shows how the clock was last corrected; tap to take a fresh reading. */
+@Composable
+private fun TimeSyncRow(internetTime: Boolean) {
+    val context = LocalContext.current
+    val sync by TimeSync.state.collectAsState()
+    // Re-read the "x min ago" text once a minute.
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            tick++
+        }
+    }
+    val value = remember(sync, tick, internetTime) {
+        val at = sync.syncedAt
+        if (sync.source == null || at == null) {
+            if (internetTime) "Waiting for GPS or internet" else "Waiting for GPS"
+        } else {
+            val minutes = (SystemClock.elapsedRealtime() - at) / 60_000L
+            val ago = if (minutes < 1) "just now" else "$minutes min ago"
+            "${sync.source} · $ago"
+        }
+    }
+    LinkRow("Time sync", value, onClick = { TimeSync.syncNow(context) })
+}
+
+/** Import or replace the offline map file, with progress. */
+@Composable
+private fun OfflineMapRow(prefs: Prefs) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val mapVersion by prefs.mapVersion.collectAsState()
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    val installed = remember(mapVersion) { MapStore.isInstalled(context) }
+    val size = remember(mapVersion) { MapStore.sizeMb(context) }
+
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            failed = false
+            progress = 0f
+            scope.launch {
+                val ok = MapStore.import(context, uri) { p -> progress = p }
+                progress = null
+                if (ok) prefs.bumpMap() else failed = true
+            }
+        }
+    }
+
+    val p = progress
+    val value = when {
+        p != null -> "Copying ${(p * 100).toInt()}%"
+        failed -> "That isn't a .pmtiles map file · Try again"
+        installed -> "Installed · $size MB · Replace"
+        else -> "Not installed · Import"
+    }
+    LinkRow("Map file", value, onClick = if (p == null) {
+        { pick.launch("*/*") }
+    } else null)
 }
 
 /** What the "Software update" row is doing right now. */

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The release build removes unused images; the default wallpaper is looked up by name, so keep it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/wallpaper_default" />

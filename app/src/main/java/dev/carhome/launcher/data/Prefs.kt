@@ -21,6 +21,9 @@ class Prefs(context: Context) {
     private val _use24h = MutableStateFlow(sp.getBoolean(KEY_24H, false))
     private val _autoSwitch = MutableStateFlow(sp.getBoolean(KEY_AUTO, true))
     private val _wallpaperVersion = MutableStateFlow(sp.getLong(KEY_WALLPAPER, 0L))
+    private val _mapVersion = MutableStateFlow(sp.getLong(KEY_MAP, 0L))
+    private val _timeZone = MutableStateFlow(sp.getString(KEY_ZONE, null))
+    private val _internetTime = MutableStateFlow(sp.getBoolean(KEY_NET_TIME, false))
     private val slots = AppSlot.entries.associateWith { MutableStateFlow(sp.getString(it.key, it.default)) }
 
     /** 0..1; 0.5 matches the Figma design (black at 20%). */
@@ -29,6 +32,12 @@ class Prefs(context: Context) {
     val autoSwitch: StateFlow<Boolean> = _autoSwitch.asStateFlow()
     /** Changes whenever a new wallpaper is imported, so it gets reloaded. */
     val wallpaperVersion: StateFlow<Long> = _wallpaperVersion.asStateFlow()
+    /** Changes whenever a new offline map is imported. */
+    val mapVersion: StateFlow<Long> = _mapVersion.asStateFlow()
+    /** A time zone ID such as "Africa/Cairo", or null to follow the unit. */
+    val timeZone: StateFlow<String?> = _timeZone.asStateFlow()
+    /** Off by default: the clock is set from GPS only, and nothing leaves the car. */
+    val internetTime: StateFlow<Boolean> = _internetTime.asStateFlow()
 
     fun slot(slot: AppSlot): StateFlow<String?> = slots.getValue(slot).asStateFlow()
 
@@ -58,10 +67,29 @@ class Prefs(context: Context) {
         sp.edit().putLong(KEY_WALLPAPER, v).apply()
     }
 
+    fun bumpMap() {
+        val v = System.currentTimeMillis()
+        _mapVersion.value = v
+        sp.edit().putLong(KEY_MAP, v).apply()
+    }
+
+    fun setInternetTime(value: Boolean) {
+        _internetTime.value = value
+        sp.edit().putBoolean(KEY_NET_TIME, value).apply()
+    }
+
+    fun setTimeZone(id: String?) {
+        _timeZone.value = id
+        sp.edit().putString(KEY_ZONE, id).apply()
+    }
+
     private companion object {
         const val KEY_GLASS = "glass"
         const val KEY_24H = "use24h"
         const val KEY_AUTO = "autoSwitch"
         const val KEY_WALLPAPER = "wallpaperVersion"
+        const val KEY_MAP = "mapVersion"
+        const val KEY_ZONE = "timeZone"
+        const val KEY_NET_TIME = "internetTime"
     }
 }

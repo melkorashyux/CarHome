@@ -7,7 +7,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,13 +20,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import dev.carhome.launcher.data.AppSlot
 import dev.carhome.launcher.data.Prefs
@@ -36,9 +37,11 @@ import dev.carhome.launcher.nav.NavRepository
 import dev.carhome.launcher.ui.apps.AppsScreen
 import dev.carhome.launcher.ui.glass.Backdrop
 import dev.carhome.launcher.ui.glass.LocalBackdrop
+import dev.carhome.launcher.ui.glass.coverRect
 import dev.carhome.launcher.ui.home.HomeScreen
 import dev.carhome.launcher.ui.home.HomeTab
 import dev.carhome.launcher.ui.settings.SettingsScreen
+import dev.carhome.launcher.ui.settings.TimeZoneScreen
 import dev.carhome.launcher.ui.theme.DesignCanvas
 import dev.carhome.launcher.ui.theme.Fallback
 import dev.carhome.launcher.util.Launch
@@ -48,11 +51,12 @@ sealed interface Screen {
     data object Home : Screen
     data object Apps : Screen
     data object Settings : Screen
+    data object TimeZone : Screen
     data class PickApp(val slot: AppSlot, val returnTo: Screen) : Screen
 }
 
 @Composable
-fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>) {
+fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted: Boolean) {
     val context = LocalContext.current
     var screen by screenState
 
@@ -78,6 +82,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>) {
     BackHandler(enabled = screen != Screen.Home) {
         screen = when (val s = screen) {
             is Screen.PickApp -> s.returnTo
+            Screen.TimeZone -> Screen.Settings
             else -> Screen.Home
         }
     }
@@ -85,22 +90,37 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
 
+    // Where the wallpaper sits: zoomed to cover the whole screen, centered.
+    val (imageOffset, imageSize) = remember(sharp, size) {
+        if (sharp == null) IntOffset.Zero to IntSize.Zero
+        else coverRect(sharp.width, sharp.height, size.width, size.height)
+    }
+
     DesignCanvas {
         Box(
             Modifier
                 .fillMaxSize()
+                .background(Fallback)
                 .onGloballyPositioned {
                     origin = it.positionInWindow()
                     size = it.size
                 }
+                .drawBehind {
+                    if (sharp != null && imageSize.width > 0) {
+                        drawImage(
+                            image = sharp,
+                            srcOffset = IntOffset.Zero,
+                            srcSize = IntSize(sharp.width, sharp.height),
+                            dstOffset = imageOffset,
+                            dstSize = imageSize,
+                            filterQuality = FilterQuality.Medium,
+                        )
+                    }
+                }
         ) {
-            if (sharp != null) {
-                Image(sharp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } else {
-                Box(Modifier.fillMaxSize().background(Fallback))
-            }
-
-            CompositionLocalProvider(LocalBackdrop provides Backdrop(sharp, blurred, tint, origin, size)) {
+            CompositionLocalProvider(
+                LocalBackdrop provides Backdrop(sharp, blurred, tint, origin, imageOffset, imageSize)
+            ) {
                 AnimatedContent(
                     targetState = screen,
                     transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
@@ -110,6 +130,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>) {
                         Screen.Home -> HomeScreen(
                             prefs = prefs,
                             tab = homeTab.value,
+                            locationGranted = locationGranted,
                             onTab = { homeTab.value = it },
                             onOpenApps = { screen = Screen.Apps },
                             onOpenSettings = { screen = Screen.Settings },
@@ -126,6 +147,12 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>) {
                             prefs = prefs,
                             onBack = { screen = Screen.Home },
                             onPick = { slot -> screen = Screen.PickApp(slot, Screen.Settings) },
+                            onOpenTimeZone = { screen = Screen.TimeZone },
+                        )
+
+                        Screen.TimeZone -> TimeZoneScreen(
+                            prefs = prefs,
+                            onBack = { screen = Screen.Settings },
                         )
 
                         is Screen.PickApp -> AppsScreen(

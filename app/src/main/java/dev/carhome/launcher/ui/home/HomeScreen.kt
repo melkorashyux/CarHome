@@ -57,8 +57,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.carhome.launcher.data.AppSlot
 import dev.carhome.launcher.data.Prefs
+import dev.carhome.launcher.map.MapStore
 import dev.carhome.launcher.media.MediaRepository
 import dev.carhome.launcher.media.MediaState
 import dev.carhome.launcher.nav.NavRepository
@@ -72,9 +74,12 @@ import dev.carhome.launcher.ui.theme.Fg
 import dev.carhome.launcher.ui.theme.Muted
 import dev.carhome.launcher.ui.theme.Placeholder
 import dev.carhome.launcher.ui.theme.Type
+import dev.carhome.launcher.time.TimeSync
 import dev.carhome.launcher.util.Launch
 import kotlinx.coroutines.delay
-import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -94,6 +99,7 @@ enum class HomeTab { Navigation, NowPlaying }
 fun HomeScreen(
     prefs: Prefs,
     tab: HomeTab,
+    locationGranted: Boolean,
     onTab: (HomeTab) -> Unit,
     onOpenApps: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -103,6 +109,9 @@ fun HomeScreen(
     val media by MediaRepository.state.collectAsState()
     val nav by NavRepository.state.collectAsState()
     val use24h by prefs.use24h.collectAsState()
+    val timeZone by prefs.timeZone.collectAsState()
+    val mapVersion by prefs.mapVersion.collectAsState()
+    val hasMap = remember(mapVersion) { MapStore.isInstalled(context) }
 
     // A button opens its chosen app, or asks you to choose one the first time.
     fun open(slot: AppSlot) {
@@ -111,7 +120,7 @@ fun HomeScreen(
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Spacer(Modifier.height(16.dp))
-        TopBar(use24h)
+        TopBar(use24h, timeZone)
         Spacer(Modifier.height(24.dp))
 
         GlassSurface(Modifier.size(336.dp, 416.dp), contentAlignment = Alignment.TopStart) {
@@ -126,7 +135,7 @@ fun HomeScreen(
                     when (t) {
                         HomeTab.Navigation -> Column {
                             Spacer(Modifier.height(16.dp))
-                            NavPanel(nav) { open(AppSlot.Navigation) }
+                            NavPanel(nav, hasMap, mapVersion, locationGranted) { open(AppSlot.Navigation) }
                         }
                         HomeTab.NowPlaying -> NowPlayingPanel(media)
                     }
@@ -136,7 +145,9 @@ fun HomeScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        Row(Modifier.height(72.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        // Connect Smartphone matches the card's width; the other four share the rest
+        // (136 each on a 1024-wide screen, wider on wider screens).
+        Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             GlassSurface(
                 modifier = Modifier.size(336.dp, 72.dp),
                 onClick = { open(AppSlot.Connect) },
@@ -148,12 +159,12 @@ fun HomeScreen(
                     Text("Connect Smartphone", style = Type.button)
                 }
             }
-            SmallButton(Icons.Rounded.Bluetooth, "Bluetooth",
+            SmallButton(Icons.Rounded.Bluetooth, "Bluetooth", Modifier.weight(1f),
                 onLongClick = { onPick(AppSlot.Bluetooth) }) { open(AppSlot.Bluetooth) }
-            SmallButton(Icons.Rounded.Apps, "Apps", onClick = onOpenApps)
-            SmallButton(Icons.Rounded.Radio, "Radio",
+            SmallButton(Icons.Rounded.Apps, "Apps", Modifier.weight(1f), onClick = onOpenApps)
+            SmallButton(Icons.Rounded.Radio, "Radio", Modifier.weight(1f),
                 onLongClick = { onPick(AppSlot.Radio) }) { open(AppSlot.Radio) }
-            SmallButton(Icons.Outlined.Settings, "Settings", onClick = onOpenSettings)
+            SmallButton(Icons.Outlined.Settings, "Settings", Modifier.weight(1f), onClick = onOpenSettings)
         }
     }
 }
@@ -161,8 +172,8 @@ fun HomeScreen(
 // ---------- Clock and date ----------
 
 @Composable
-private fun TopBar(use24h: Boolean) {
-    val now = rememberNow()
+private fun TopBar(use24h: Boolean, timeZone: String?) {
+    val now = rememberNow(timeZone)
     val time = DateTimeFormatter.ofPattern(if (use24h) "HH:mm" else "h:mm a", Locale.ENGLISH).format(now)
     val date = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH).format(now)
     Row(
@@ -175,14 +186,23 @@ private fun TopBar(use24h: Boolean) {
     }
 }
 
-/** Ticks exactly on each new minute. */
+/**
+ * The real time: the unit's clock corrected by GPS or internet time (see TimeSync),
+ * in your chosen time zone. Ticks exactly on each new minute, and updates straight
+ * away when a sync corrects it.
+ */
 @Composable
-private fun rememberNow(): LocalDateTime {
-    var now by remember { mutableStateOf(LocalDateTime.now()) }
-    LaunchedEffect(Unit) {
+private fun rememberNow(timeZone: String?): ZonedDateTime {
+    val sync by TimeSync.state.collectAsState()
+    val zone = remember(timeZone) {
+        timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+    }
+    fun current() = Instant.ofEpochMilli(TimeSync.now()).atZone(zone)
+    var now by remember { mutableStateOf(current()) }
+    LaunchedEffect(sync, zone) {
         while (true) {
-            now = LocalDateTime.now()
-            delay(60_000L - (System.currentTimeMillis() % 60_000L))
+            now = current()
+            delay(60_000L - (TimeSync.now() % 60_000L))
         }
     }
     return now
@@ -319,21 +339,37 @@ private fun ControlButton(icon: ImageVector, label: String, enabled: Boolean, al
 }
 
 // ---------- Navigation ----------
-// The live offline map replaces the middle of this panel in the next build.
 
 @Composable
-private fun NavPanel(nav: NavState, onOpen: () -> Unit) {
+private fun NavPanel(nav: NavState, hasMap: Boolean, mapVersion: Long, locationGranted: Boolean, onOpen: () -> Unit) {
     Box(
         Modifier
             .size(304.dp, 312.dp)
-            .pressable(onClick = onOpen)
             .clip(Rounded8)
-            .background(Color(0xFF161616))
+            .background(Color(0xFF15171B))
     ) {
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Outlined.Navigation, null, tint = Placeholder, modifier = Modifier.size(56.dp))
-            Spacer(Modifier.height(16.dp))
-            Text(if (nav.active) "Navigating in Google Maps" else "Tap to open Maps", style = Type.body)
+        if (hasMap) {
+            // key() rebuilds the map when a new map file is imported or location is allowed.
+            androidx.compose.runtime.key(mapVersion, locationGranted) {
+                OfflineMap(Modifier.fillMaxSize(), locationGranted, onTap = onOpen)
+            }
+            Text(
+                "© OpenStreetMap",
+                style = Type.body.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        } else {
+            Column(
+                Modifier.align(Alignment.Center).pressable(onClick = onOpen),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Outlined.Navigation, null, tint = Placeholder, modifier = Modifier.size(56.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (nav.active) "Navigating in Google Maps" else "No offline map yet\nAdd one in Settings",
+                    style = Type.body, textAlign = TextAlign.Center,
+                )
+            }
         }
 
         if (nav.active) {
@@ -343,7 +379,7 @@ private fun NavPanel(nav: NavState, onOpen: () -> Unit) {
                     .fillMaxWidth()
                     .padding(8.dp)
                     .clip(Rounded8)
-                    .background(Color.Black.copy(alpha = 0.6f))
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -366,11 +402,12 @@ private fun NavPanel(nav: NavState, onOpen: () -> Unit) {
 private fun SmallButton(
     icon: ImageVector,
     label: String,
+    modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     GlassSurface(
-        modifier = Modifier.size(136.dp, 72.dp),
+        modifier = modifier.height(72.dp),
         onClick = onClick,
         onLongClick = onLongClick,
     ) {

@@ -15,12 +15,12 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 object Wallpaper {
-    /** The design canvas is 1024×600, so every wallpaper is cropped to that shape. */
-    private const val ASPECT = 1024f / 600f
-
     fun file(context: Context) = File(context.filesDir, "wallpaper.jpg")
 
-    /** Copies a picked photo into the app, upright, cropped and resized. */
+    /**
+     * Copies a picked photo into the app, upright and resized. It isn't cropped here:
+     * the screen zooms it to fill edge to edge, whatever the screen's shape.
+     */
     suspend fun importFrom(context: Context, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             val resolver = context.contentResolver
@@ -40,8 +40,7 @@ object Wallpaper {
                     Matrix().apply { postRotate(rotation.toFloat()) }, true)
             } else decoded
 
-            val cropped = centerCrop(upright)
-            FileOutputStream(file(context)).use { cropped.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            FileOutputStream(file(context)).use { upright.compress(Bitmap.CompressFormat.JPEG, 92, it) }
             true
         } catch (e: Exception) {
             false
@@ -62,7 +61,7 @@ object Wallpaper {
                 BitmapFactory.decodeResource(context.resources, id, BitmapFactory.Options().apply { inSampleSize = sample })
             }
         }
-        bitmap?.let(::centerCrop)
+        bitmap
     }
 
     /**
@@ -86,18 +85,9 @@ object Wallpaper {
      * [intensity] 0..1 is the Settings slider.
      */
     suspend fun blurred(source: Bitmap, intensity: Float): ImageBitmap = withContext(Dispatchers.Default) {
-        val small = Bitmap.createScaledBitmap(source, 256, 150, true)
+        val height = (256f * source.height / source.width).roundToInt().coerceAtLeast(1)
+        val small = Bitmap.createScaledBitmap(source, 256, height, true)
         Blur.boxBlur(small, 2 + (intensity * 10).roundToInt()).asImageBitmap()
     }
 
-    private fun centerCrop(b: Bitmap): Bitmap {
-        val aspect = b.width.toFloat() / b.height
-        return if (aspect > ASPECT) {
-            val w = (b.height * ASPECT).roundToInt().coerceAtMost(b.width)
-            Bitmap.createBitmap(b, (b.width - w) / 2, 0, w, b.height)
-        } else {
-            val h = (b.width / ASPECT).roundToInt().coerceAtMost(b.height)
-            Bitmap.createBitmap(b, 0, (b.height - h) / 2, b.width, h)
-        }
-    }
 }
