@@ -26,7 +26,7 @@ object Updater {
      * Where releases are published, as "owner/repository".
      * The repository must be PUBLIC: GitHub hides private releases from the app.
      */
-    const val REPO = "YOUR_GITHUB_NAME/CarHome"
+    const val REPO = "melkorashyux/CarHome"
 
     sealed interface Check {
         data class Available(val version: String, val url: String) : Check
