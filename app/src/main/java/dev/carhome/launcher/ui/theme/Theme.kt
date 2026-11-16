@@ -45,12 +45,13 @@ private fun style(weight: FontWeight, size: Int, color: Color = Fg, line: Int = 
 )
 
 object Type {
-    val clock = style(FontWeight.Bold, 18)
+    val clock = style(FontWeight.Medium, 20)
     val tabActive = style(FontWeight.Bold, 16)
     val tabInactive = style(FontWeight.Normal, 16, Muted)
     val songTitle = style(FontWeight.SemiBold, 18)
     val artist = style(FontWeight.Normal, 18)
     val button = style(FontWeight.Medium, 18)
+    val buttonLarge = style(FontWeight.Medium, 20)
     val body = style(FontWeight.Normal, 16, Muted)
     val rowTitle = style(FontWeight.Medium, 18)
     val sectionHeader = style(FontWeight.Medium, 16, Muted)

@@ -28,12 +28,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Smartphone
@@ -93,7 +91,8 @@ enum class HomeTab { Navigation, NowPlaying }
  *   24  gap
  *  416  card (336 wide)
  *   24  gap
- *   72  bottom row (336 + 4 × 136, gaps 24)
+ *   72  bottom row: Connect Smartphone (336) left, Apps (72×72) right
+ *  Settings (72×72) sits top-right, level with the card's top.
  *   24  bottom margin
  */
 @Composable
@@ -124,48 +123,48 @@ fun HomeScreen(
         TopBar(use24h, timeZone)
         Spacer(Modifier.height(24.dp))
 
-        GlassSurface(Modifier.size(336.dp, 416.dp), contentAlignment = Alignment.TopStart) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                TabBar(tab, onTab)
-                Crossfade(
-                    targetState = tab,
-                    animationSpec = tween(250),
-                    label = "tab",
-                    modifier = Modifier.weight(1f),
-                ) { t ->
-                    when (t) {
-                        HomeTab.Navigation -> Column {
-                            Spacer(Modifier.height(16.dp))
-                            NavPanel(nav, hasMap, mapVersion, locationGranted) { open(AppSlot.Navigation) }
+        // The card on the left; the Settings button top-right, level with the card's top.
+        Row(Modifier.fillMaxWidth().height(416.dp)) {
+            GlassSurface(Modifier.size(336.dp, 416.dp), contentAlignment = Alignment.TopStart) {
+                Column(Modifier.fillMaxSize().padding(16.dp)) {
+                    TabBar(tab, onTab)
+                    Crossfade(
+                        targetState = tab,
+                        animationSpec = tween(250),
+                        label = "tab",
+                        modifier = Modifier.weight(1f),
+                    ) { t ->
+                        when (t) {
+                            HomeTab.Navigation -> Column {
+                                Spacer(Modifier.height(16.dp))
+                                NavPanel(nav, hasMap, mapVersion, locationGranted) { open(AppSlot.Navigation) }
+                            }
+                            HomeTab.NowPlaying -> NowPlayingPanel(media)
                         }
-                        HomeTab.NowPlaying -> NowPlayingPanel(media)
                     }
                 }
             }
+            Spacer(Modifier.weight(1f))
+            IconButton(Icons.Outlined.Settings, "Settings", onClick = onOpenSettings)
         }
 
         Spacer(Modifier.height(24.dp))
 
-        // Connect Smartphone matches the card's width; the other four share the rest
-        // (136 each on a 1024-wide screen, wider on wider screens).
-        Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        // Connect Smartphone (card width) on the left, Apps on the far right.
+        Row(Modifier.fillMaxWidth().height(72.dp), verticalAlignment = Alignment.CenterVertically) {
             GlassSurface(
                 modifier = Modifier.size(336.dp, 72.dp),
                 onClick = { open(AppSlot.Connect) },
                 onLongClick = { onPick(AppSlot.Connect) },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Smartphone, null, tint = Fg, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Rounded.Smartphone, null, tint = Fg, modifier = Modifier.size(32.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Connect Smartphone", style = Type.button)
+                    Text("Connect Smartphone", style = Type.buttonLarge)
                 }
             }
-            SmallButton(Icons.Rounded.Bluetooth, "Bluetooth", Modifier.weight(1f),
-                onLongClick = { onPick(AppSlot.Bluetooth) }) { open(AppSlot.Bluetooth) }
-            SmallButton(Icons.Rounded.Apps, "Apps", Modifier.weight(1f), onClick = onOpenApps)
-            SmallButton(Icons.Rounded.Radio, "Radio", Modifier.weight(1f),
-                onLongClick = { onPick(AppSlot.Radio) }) { open(AppSlot.Radio) }
-            SmallButton(Icons.Outlined.Settings, "Settings", Modifier.weight(1f), onClick = onOpenSettings)
+            Spacer(Modifier.weight(1f))
+            IconButton(Icons.Rounded.Apps, "Apps", onClick = onOpenApps)
         }
     }
 }
@@ -301,7 +300,7 @@ private fun NowPlayingPanel(media: MediaState) {
                     style = Type.body, textAlign = TextAlign.Center,
                 )
                 // The easter egg.
-                !media.hasTrack -> Text("The Sound of Silence", style = Type.songTitle.copy(color = Muted))
+                !media.hasTrack -> Text("The Sound of Silence", style = Type.songTitle)
                 else -> {
                     Text(media.title.orEmpty(), style = Type.songTitle, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -314,7 +313,7 @@ private fun NowPlayingPanel(media: MediaState) {
         Spacer(Modifier.weight(1f))
 
         val dim = if (media.hasTrack) 1f else 0.35f
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             ControlButton(Icons.Rounded.SkipPrevious, "Previous", media.hasTrack, dim) { MediaRepository.previous() }
             ControlButton(
                 if (media.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -415,25 +414,15 @@ private fun NavPanel(nav: NavState, hasMap: Boolean, mapVersion: Long, locationG
     }
 }
 
-// ---------- Bottom row ----------
+// ---------- Square icon buttons (Settings, Apps) ----------
 
+/** A 72×72 glass square with a 32 icon, as in the Figma design. */
 @Composable
-private fun SmallButton(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
-) {
+private fun IconButton(icon: ImageVector, label: String, onClick: () -> Unit) {
     GlassSurface(
-        modifier = modifier.height(72.dp),
+        modifier = Modifier.size(72.dp),
         onClick = onClick,
-        onLongClick = onLongClick,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, null, tint = Fg, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(label, style = Type.button)
-        }
+        Icon(icon, label, tint = Fg, modifier = Modifier.size(32.dp))
     }
 }

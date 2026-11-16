@@ -8,8 +8,6 @@ import kotlinx.coroutines.flow.asStateFlow
 /** The home-screen buttons whose app you choose yourself. */
 enum class AppSlot(val key: String, val label: String, val default: String?) {
     Connect("app_connect", "Connect Smartphone", null),
-    Bluetooth("app_bluetooth", "Bluetooth", null),
-    Radio("app_radio", "Radio", null),
     Navigation("app_navigation", "Navigation", "com.google.android.apps.maps"),
 }
 

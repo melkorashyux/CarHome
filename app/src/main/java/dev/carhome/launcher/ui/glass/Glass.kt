@@ -121,7 +121,7 @@ fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Panel): Modifier
             .clip(shape)
             .background(Color.White.copy(alpha = 0.05f))
     }
-    filled.border(1.dp, if (style == GlassStyle.Panel) PanelEdge else InsetEdge, shape)
+    filled.border(1.dp, if (style == GlassStyle.Inset) InsetEdge else PanelEdge, shape)
 }
 
 /**
