@@ -36,6 +36,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.carhome.launcher.util.ClickSound
 import kotlin.math.roundToInt
 
 val Pill = RoundedCornerShape(percent = 50)
@@ -154,8 +155,8 @@ fun GlassSurface(
             interactionSource = source,
             indication = null,
             enabled = enabled,
-            onLongClick = onLongClick,
-            onClick = onClick,
+            onLongClick = onLongClick?.let { long -> { ClickSound.play(); long() } },
+            onClick = { ClickSound.play(); onClick() },
         )
     }
     Box(
@@ -187,8 +188,8 @@ fun Modifier.pressable(
             interactionSource = source,
             indication = null,
             enabled = enabled,
-            onLongClick = onLongClick,
-            onClick = onClick,
+            onLongClick = onLongClick?.let { long -> { ClickSound.play(); long() } },
+            onClick = { ClickSound.play(); onClick() },
         )
 }
 
@@ -198,5 +199,5 @@ fun Modifier.rowPress(onClick: () -> Unit): Modifier = composed {
     val pressed by source.collectIsPressedAsState()
     this
         .background(if (pressed) Color.White.copy(alpha = 0.06f) else Color.Transparent)
-        .clickable(interactionSource = source, indication = null, onClick = onClick)
+        .clickable(interactionSource = source, indication = null, onClick = { ClickSound.play(); onClick() })
 }

@@ -74,6 +74,7 @@ import dev.carhome.launcher.ui.theme.Muted
 import dev.carhome.launcher.ui.theme.Placeholder
 import dev.carhome.launcher.ui.theme.Type
 import dev.carhome.launcher.time.TimeSync
+import dev.carhome.launcher.util.ClickSound
 import dev.carhome.launcher.util.Launch
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -250,7 +251,7 @@ private fun TabItem(icon: ImageVector, label: String, active: Boolean, onClick: 
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick,
+                onClick = { ClickSound.play(); onClick() },
             ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,

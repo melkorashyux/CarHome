@@ -50,6 +50,7 @@ import dev.carhome.launcher.data.ImportState
 import dev.carhome.launcher.data.Imports
 import dev.carhome.launcher.map.MapStore
 import dev.carhome.launcher.ui.files.FileKind
+import dev.carhome.launcher.util.ClickSound
 import dev.carhome.launcher.util.CrashLog
 import dev.carhome.launcher.media.MediaRepository
 import dev.carhome.launcher.media.NotificationDiagnostics
@@ -123,6 +124,9 @@ fun SettingsScreen(
                         }
                     })
                 }
+                Divider()
+                val buttonSounds by prefs.buttonSounds.collectAsState()
+                SwitchRow("Button sounds", buttonSounds, prefs::setButtonSounds)
                 Divider()
                 Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Glass intensity", style = Type.rowTitle, modifier = Modifier.width(232.dp))
@@ -443,7 +447,8 @@ private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
         Text(title, style = Type.rowTitle, modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
-            onCheckedChange = onChange,
+            // Change first, then tick: turning sounds on ticks, turning them off is silent.
+            onCheckedChange = { onChange(it); ClickSound.play() },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Fg,
                 checkedTrackColor = SwitchGreen,
