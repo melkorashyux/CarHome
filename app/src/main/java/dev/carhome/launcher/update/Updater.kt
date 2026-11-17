@@ -12,7 +12,13 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import dev.carhome.launcher.time.TimeSync
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLException
 import java.net.URL
 
 /**
@@ -43,6 +49,7 @@ object Updater {
     suspend fun check(context: Context): Check = withContext(Dispatchers.IO) {
         try {
             val conn = (URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection).apply {
+                useRealTime()
                 connectTimeout = 10_000
                 readTimeout = 10_000
                 setRequestProperty("Accept", "application/vnd.github+json")
@@ -71,10 +78,8 @@ object Updater {
                 apkUrl == null -> Check.Failed("Release $latest has no APK attached")
                 else -> Check.Available(latest, apkUrl)
             }
-        } catch (e: IOException) {
-            Check.Failed("No internet connection")
         } catch (e: Exception) {
-            Check.Failed("Couldn't read the latest release")
+            Check.Failed(explain(e))
         }
     }
 
@@ -85,6 +90,7 @@ object Updater {
                 val dir = File(context.cacheDir, "updates").apply { mkdirs() }
                 val out = File(dir, "update.apk")
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    useRealTime()
                     instanceFollowRedirects = true
                     connectTimeout = 15_000
                     readTimeout = 15_000
@@ -143,6 +149,22 @@ object Updater {
         } catch (e: Exception) {
             Toast.makeText(context, "Couldn't start the installer", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** Check certificates against the real time when the unit's clock is wrong (see RealTimeTls). */
+    private fun HttpURLConnection.useRealTime() {
+        if (this is HttpsURLConnection) RealTimeTls.socketFactory()?.let { sslSocketFactory = it }
+    }
+
+    /** A message that says what actually went wrong. */
+    private fun explain(e: Exception): String = when {
+        e is UnknownHostException || e is ConnectException -> "No internet connection"
+        e is SocketTimeoutException -> "Connection timed out"
+        e is SSLException && RealTimeTls.unitClockLooksWrong() && TimeSync.state.value.source == null ->
+            "Unit date is wrong; wait for GPS or turn on Internet time"
+        e is SSLException -> "Secure connection failed"
+        e is IOException -> "Connection problem"
+        else -> "Couldn't read the latest release"
     }
 
     /** "0.10" is newer than "0.9"; compares each number in turn. */

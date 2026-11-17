@@ -35,14 +35,12 @@ import dev.carhome.launcher.data.Imports
 import dev.carhome.launcher.ui.files.FileKind
 import dev.carhome.launcher.ui.files.FilePickerScreen
 import dev.carhome.launcher.data.Prefs
-import dev.carhome.launcher.media.MediaRepository
-import dev.carhome.launcher.nav.NavRepository
 import dev.carhome.launcher.ui.apps.AppsScreen
 import dev.carhome.launcher.ui.glass.Backdrop
 import dev.carhome.launcher.ui.glass.LocalBackdrop
 import dev.carhome.launcher.ui.glass.coverRect
 import dev.carhome.launcher.ui.home.HomeScreen
-import dev.carhome.launcher.ui.home.HomeTab
+import dev.carhome.launcher.ui.home.MapScreen
 import dev.carhome.launcher.ui.settings.SettingsScreen
 import dev.carhome.launcher.ui.settings.TimeZoneScreen
 import dev.carhome.launcher.ui.theme.DesignCanvas
@@ -55,6 +53,7 @@ sealed interface Screen {
     data object Apps : Screen
     data object Settings : Screen
     data object TimeZone : Screen
+    data object Map : Screen
     data class PickFile(val kind: FileKind) : Screen
     data class PickApp(val slot: AppSlot, val returnTo: Screen) : Screen
 }
@@ -72,16 +71,8 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
     val sharp = remember(source) { source?.asImageBitmap() }
     var blurred by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(source, intensity) { blurred = source?.let { Wallpaper.blurred(it, intensity) } }
-    val tint = 0.10f + 0.20f * intensity // 0.5 → black at 20%, as in Figma
-
-    // Auto-switch tabs when music or navigation starts. Lives here so it keeps
-    // working while Apps or Settings is open, and a manual tap holds until the next start.
-    val homeTab = remember { mutableStateOf(HomeTab.NowPlaying) }
-    val media by MediaRepository.state.collectAsState()
-    val nav by NavRepository.state.collectAsState()
-    val autoSwitch by prefs.autoSwitch.collectAsState()
-    LaunchedEffect(media.playing) { if (autoSwitch && media.playing) homeTab.value = HomeTab.NowPlaying }
-    LaunchedEffect(nav.active) { if (autoSwitch && nav.active) homeTab.value = HomeTab.Navigation }
+    val tint = 0.10f + 0.20f * intensity // 0.5 → 20%, as in Figma
+    val lightGlass by prefs.lightGlass.collectAsState()
 
     BackHandler(enabled = screen != Screen.Home) {
         screen = when (val s = screen) {
@@ -123,7 +114,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                 }
         ) {
             CompositionLocalProvider(
-                LocalBackdrop provides Backdrop(sharp, blurred, tint, origin, imageOffset, imageSize)
+                LocalBackdrop provides Backdrop(sharp, blurred, tint, lightGlass, origin, imageOffset, imageSize)
             ) {
                 AnimatedContent(
                     targetState = screen,
@@ -133,12 +124,16 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                     when (s) {
                         Screen.Home -> HomeScreen(
                             prefs = prefs,
-                            tab = homeTab.value,
                             locationGranted = locationGranted,
-                            onTab = { homeTab.value = it },
+                            onOpenMap = { screen = Screen.Map },
                             onOpenApps = { screen = Screen.Apps },
                             onOpenSettings = { screen = Screen.Settings },
                             onPick = { slot -> screen = Screen.PickApp(slot, Screen.Home) },
+                        )
+
+                        Screen.Map -> MapScreen(
+                            locationGranted = locationGranted,
+                            onBack = { screen = Screen.Home },
                         )
 
                         Screen.Apps -> AppsScreen(

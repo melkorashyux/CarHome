@@ -1,16 +1,8 @@
 package dev.carhome.launcher.time
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
-import android.os.Bundle
-import android.os.Looper
 import android.os.SystemClock
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.carhome.launcher.location.GpsTracker
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -39,7 +32,7 @@ data class TimeState(
  * the unit's clock: once per drive it works out the real time, then stops.
  *
  *  1. GPS first: the first satellite fix after the car starts gives the exact time,
- *     fully offline. Car Home then stops listening for time.
+ *     fully offline. (GPS itself stays on for the map; see GpsTracker.)
  *  2. Internet only if you switch "Internet time" on in Settings, and only until the
  *     first successful sync (GPS or internet), then it stops too.
  *
@@ -53,9 +46,9 @@ object TimeSync {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var internetJob: Job? = null
-    private var locationManager: LocationManager? = null
-    private var gpsRegistered = false
     private var internetAllowed = false
+    /** Set by "Sync now": take the next GPS fix even though we're already synced. */
+    private var wantFresh = false
 
     // Any time earlier than this is clearly wrong (protects against bad GPS modules).
     private const val SANE_AFTER_MS = 1_735_689_600_000L // 1 Jan 2025
@@ -74,8 +67,9 @@ object TimeSync {
             internetJob?.cancel()
             internetJob = null
         }
+        // GPS stays on for the whole drive (GpsTracker); its first fix sets the clock.
+        GpsTracker.start(context)
         if (synced) return
-        startGps(context.applicationContext)
         if (allowInternet && internetJob?.isActive != true) {
             internetJob = scope.launch {
                 // Try every 2 minutes (the unit may not be online yet) until either source syncs.
@@ -89,52 +83,24 @@ object TimeSync {
 
     /** "Sync now" from Settings: take one fresh reading, then stop again. */
     fun syncNow(context: Context) {
-        startGps(context.applicationContext)
+        wantFresh = true
+        GpsTracker.start(context)
         if (internetAllowed) scope.launch { syncFromInternet() }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun startGps(context: Context) {
-        if (gpsRegistered) return
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) return
-        val lm = context.getSystemService(LocationManager::class.java) ?: return
-        if (!lm.allProviders.contains(LocationManager.GPS_PROVIDER)) return
-        try {
-            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, gpsListener, Looper.getMainLooper())
-            locationManager = lm
-            gpsRegistered = true
-        } catch (e: Exception) {
-            // GPS unavailable on this unit; internet sync still works.
+    /**
+     * Called by GpsTracker for every fix. The first one after the car starts sets the time
+     * (GPS time is the satellite time of the fix; adjust for how old the fix is).
+     */
+    fun onGpsFix(location: Location) {
+        if (synced && !wantFresh) return
+        val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
+        val trueNow = location.time + ageMs
+        if (trueNow > SANE_AFTER_MS) {
+            wantFresh = false
+            publish(trueNow - System.currentTimeMillis(), "GPS")
+            internetJob?.cancel()
         }
-    }
-
-    private val gpsListener = object : LocationListener {
-        override fun onLocationChanged(location: Location) {
-            // GPS time is the satellite time of the fix; adjust for how old the fix is.
-            val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
-            val trueNow = location.time + ageMs
-            if (trueNow > SANE_AFTER_MS) {
-                publish(trueNow - System.currentTimeMillis(), "GPS")
-                stopGps() // got this drive's time; the map keeps its own GPS for your position
-                internetJob?.cancel()
-            }
-        }
-
-        @Deprecated("Required on Android 10")
-        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-        override fun onProviderEnabled(provider: String) = Unit
-        override fun onProviderDisabled(provider: String) = Unit
-    }
-
-    private fun stopGps() {
-        try {
-            locationManager?.removeUpdates(gpsListener)
-        } catch (e: Exception) {
-            // Already stopped.
-        }
-        gpsRegistered = false
     }
 
     private suspend fun syncFromInternet(): Boolean = withContext(Dispatchers.IO) {

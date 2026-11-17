@@ -97,9 +97,22 @@ maps.protomaps.com/builds (format `YYYYMMDD`), then run:
 It downloads only Egypt's part. Expect a few hundred MB. To make a smaller file, use a smaller
 box: Greater Cairo only is `--bbox=30.8,29.8,31.8,30.4`.
 
+**Using it:** the home card shows the map following you. Tap it for the full-screen map:
+drag, pinch and rotate freely, **+ / −** to zoom, and the location button to follow you again.
+It's a map, not turn-by-turn navigation.
+
 **3. Import it:** copy `egypt.pmtiles` to a USB stick, then on the unit open
 Car Home → Settings → Offline map → **Map file** and pick it. To update the map later,
 make a new file the same way and import it again.
+
+## GPS start-up time
+
+Car Home switches GPS on as soon as it starts and keeps it on for the whole drive, and opens
+the map on where you last parked. Without internet, the first GPS fix still takes from about
+a minute to several minutes in open sky. It takes much longer if the **unit's own date is wrong**,
+because the receiver then looks for satellites in the wrong places. Turn on the unit's automatic
+or GPS time (Android Settings → Date & time, or the unit's car/factory settings) if it has one.
+Settings → Diagnostics → **GPS** shows how many satellites it hears.
 
 ## Clock
 

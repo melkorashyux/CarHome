@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,9 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.carhome.launcher.ui.theme.DarkPalette
+import dev.carhome.launcher.ui.theme.LightPalette
+import dev.carhome.launcher.ui.theme.LocalPalette
 import dev.carhome.launcher.util.ClickSound
 import kotlin.math.roundToInt
 
@@ -51,6 +55,8 @@ data class Backdrop(
     val wallpaper: ImageBitmap? = null,
     val blurred: ImageBitmap? = null,
     val tint: Float = 0.2f,
+    /** Light glass: white instead of black, at the same strength. */
+    val light: Boolean = false,
     val origin: Offset = Offset.Zero,
     val imageOffset: IntOffset = IntOffset.Zero,
     val imageSize: IntSize = IntSize.Zero,
@@ -115,7 +121,7 @@ fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Panel): Modifier
                         filterQuality = FilterQuality.Medium,
                     )
                 }
-                drawRect(Color.Black.copy(alpha = backdrop.tint))
+                drawRect((if (backdrop.light) Color.White else Color.Black).copy(alpha = backdrop.tint))
             }
 
         GlassStyle.Inset -> this
@@ -159,13 +165,23 @@ fun GlassSurface(
             onClick = { ClickSound.play(); onClick() },
         )
     }
-    Box(
-        modifier = m
-            .glass(shape, style)
-            .then(if (pressed) Modifier.background(Color.White.copy(alpha = 0.08f)) else Modifier),
-        contentAlignment = contentAlignment,
-        content = content,
-    )
+    // A panel sets the text color for everything on it: dark text on Light glass,
+    // light text on Dark glass. Inset parts inherit their panel's choice.
+    val backdrop = LocalBackdrop.current
+    val palette = if (style == GlassStyle.Panel) {
+        if (backdrop.light) LightPalette else DarkPalette
+    } else {
+        LocalPalette.current
+    }
+    CompositionLocalProvider(LocalPalette provides palette) {
+        Box(
+            modifier = m
+                .glass(shape, style)
+                .then(if (pressed) Modifier.background(Color.White.copy(alpha = 0.08f)) else Modifier),
+            contentAlignment = contentAlignment,
+            content = content,
+        )
+    }
 }
 
 /** The same press feel for things that aren't glass (map, app icons). */

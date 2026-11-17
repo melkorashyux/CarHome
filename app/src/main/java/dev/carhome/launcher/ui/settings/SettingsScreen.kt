@@ -53,11 +53,12 @@ import dev.carhome.launcher.ui.files.FileKind
 import dev.carhome.launcher.util.ClickSound
 import dev.carhome.launcher.util.CrashLog
 import dev.carhome.launcher.media.MediaRepository
-import dev.carhome.launcher.media.NotificationDiagnostics
+import dev.carhome.launcher.location.GpsTracker
 import dev.carhome.launcher.time.TimeSync
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.LocalBackdrop
+import dev.carhome.launcher.ui.glass.Pill
 import dev.carhome.launcher.ui.glass.Rounded8
 import dev.carhome.launcher.ui.glass.rowPress
 import dev.carhome.launcher.ui.theme.Fg
@@ -85,7 +86,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val glass by prefs.glass.collectAsState()
     val use24h by prefs.use24h.collectAsState()
-    val autoSwitch by prefs.autoSwitch.collectAsState()
     val media by MediaRepository.state.collectAsState()
     val wallpaper = LocalBackdrop.current.wallpaper
     val wallpaperVersion by prefs.wallpaperVersion.collectAsState()
@@ -125,6 +125,14 @@ fun SettingsScreen(
                     })
                 }
                 Divider()
+                val lightGlass by prefs.lightGlass.collectAsState()
+                ChoiceRow(
+                    title = "Glass",
+                    options = listOf("Dark", "Light"),
+                    selected = if (lightGlass) 1 else 0,
+                    onSelect = { prefs.setLightGlass(it == 1) },
+                )
+                Divider()
                 val buttonSounds by prefs.buttonSounds.collectAsState()
                 SwitchRow("Button sounds", buttonSounds, prefs::setButtonSounds)
                 Divider()
@@ -137,7 +145,7 @@ fun SettingsScreen(
                         colors = SliderDefaults.colors(
                             thumbColor = Fg,
                             activeTrackColor = Fg,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                            inactiveTrackColor = Fg.copy(alpha = 0.2f),
                         ),
                     )
                 }
@@ -169,9 +177,6 @@ fun SettingsScreen(
                 OfflineMapRow(prefs, onPickFile)
             }
 
-            Section("Home") {
-                SwitchRow("Switch tabs when music or directions start", autoSwitch, prefs::setAutoSwitch)
-            }
 
             Section("Buttons", footer = "Tip: long-press a button on the home screen to change its app.") {
                 AppSlot.entries.forEachIndexed { i, slot ->
@@ -255,32 +260,16 @@ private fun OfflineMapRow(prefs: Prefs, onPickFile: (FileKind) -> Unit) {
     }
 }
 
-/**
- * What Car Home can see of music players and ongoing notifications. With music playing,
- * a photo of this shows how the unit's player reports itself.
- */
+/** What the GPS receiver is doing: useful when the map or clock takes long to start. */
 @Composable
-private fun MediaDiagnostics() {
-    val media by MediaRepository.state.collectAsState()
-    val notifications by NotificationDiagnostics.lines.collectAsState()
-    var expanded by remember { mutableStateOf(false) }
-    LinkRow("Music players seen", if (expanded) "Hide" else "Show", onClick = { expanded = !expanded })
-    if (expanded) {
-        val players = MediaRepository.describePlayers()
-        val text = buildString {
-            append("Notification access: ").append(if (media.hasAccess) "allowed" else "NOT allowed").append("\n\n")
-            append("Media players:\n")
-            if (players.isEmpty()) append("   none\n") else players.forEach { append("   ").append(it).append("\n") }
-            append("\nOngoing notifications:\n")
-            if (notifications.isEmpty()) append("   none\n") else notifications.forEach { append("   ").append(it).append("\n") }
-        }
-        Divider()
-        Text(
-            text,
-            style = Type.body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = Fg),
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        )
+private fun GpsDiagnostics() {
+    val gps by GpsTracker.state.collectAsState()
+    val value = when {
+        gps.hasFix -> "Fix · using ${gps.satellitesUsed} of ${gps.satellitesSeen} satellites"
+        gps.satellitesSeen > 0 -> "Searching · hears ${gps.satellitesSeen} satellites"
+        else -> "Searching · no satellites heard yet"
     }
+    LinkRow("GPS", value, onClick = null)
 }
 
 /** The last error Car Home hit, kept on the unit so it can be photographed and fixed. */
@@ -292,7 +281,7 @@ private fun DiagnosticsSection() {
     var expanded by remember { mutableStateOf(false) }
 
     Section("Diagnostics", footer = "Stays on the unit. A photo of this helps fix problems.") {
-        MediaDiagnostics()
+        GpsDiagnostics()
         Divider()
         if (log == null) {
             LinkRow("Last error", "None", onClick = null)
@@ -438,6 +427,37 @@ private fun LinkRow(
     }
 }
 
+/** A row with a small two-or-more-way choice on the right, like an iOS segmented control. */
+@Composable
+private fun ChoiceRow(title: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = Type.rowTitle, modifier = Modifier.weight(1f))
+        Row(
+            Modifier
+                .clip(Pill)
+                .background(Fg.copy(alpha = 0.08f))
+                .padding(4.dp),
+        ) {
+            options.forEachIndexed { i, label ->
+                val active = i == selected
+                Box(
+                    Modifier
+                        .size(96.dp, 40.dp)
+                        .clip(Pill)
+                        .background(if (active) Fg.copy(alpha = 0.16f) else Color.Transparent)
+                        .rowPress { if (!active) onSelect(i) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, style = if (active) Type.tabActive else Type.tabInactive)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
@@ -450,11 +470,11 @@ private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
             // Change first, then tick: turning sounds on ticks, turning them off is silent.
             onCheckedChange = { onChange(it); ClickSound.play() },
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Fg,
+                checkedThumbColor = Color.White, // iOS: white knob on green, in both modes
                 checkedTrackColor = SwitchGreen,
                 checkedBorderColor = Color.Transparent,
-                uncheckedThumbColor = Fg,
-                uncheckedTrackColor = Color.White.copy(alpha = 0.15f),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Fg.copy(alpha = 0.18f),
                 uncheckedBorderColor = Color.Transparent,
             ),
         )
@@ -468,6 +488,6 @@ private fun Divider() {
             .padding(start = 16.dp)
             .fillMaxWidth()
             .height(1.dp)
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(Fg.copy(alpha = 0.10f))
     )
 }
