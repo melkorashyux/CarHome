@@ -36,6 +36,7 @@ import dev.carhome.launcher.ui.files.FileKind
 import dev.carhome.launcher.ui.files.FilePickerScreen
 import dev.carhome.launcher.data.Prefs
 import dev.carhome.launcher.ui.apps.AppsScreen
+import dev.carhome.launcher.ui.common.ClockBar
 import dev.carhome.launcher.ui.glass.Backdrop
 import dev.carhome.launcher.ui.glass.LocalBackdrop
 import dev.carhome.launcher.ui.glass.coverRect
@@ -116,6 +117,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
             CompositionLocalProvider(
                 LocalBackdrop provides Backdrop(sharp, blurred, tint, lightGlass, origin, imageOffset, imageSize)
             ) {
+                // The time and date stay at the top of every screen.
                 AnimatedContent(
                     targetState = screen,
                     transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
@@ -179,6 +181,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                         )
                     }
                 }
+                ClockBar(prefs)
             }
         }
     }

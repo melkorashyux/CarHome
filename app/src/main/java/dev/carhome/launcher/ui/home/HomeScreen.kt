@@ -47,7 +47,7 @@ import dev.carhome.launcher.map.MapGuard
 import dev.carhome.launcher.map.MapStore
 import dev.carhome.launcher.nav.NavRepository
 import dev.carhome.launcher.nav.NavState
-import dev.carhome.launcher.time.TimeSync
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.Pill
 import dev.carhome.launcher.ui.glass.Rounded8
@@ -68,7 +68,7 @@ import java.util.Locale
 /*
  * Layout on the 1024×600 canvas (all snapped to the 8-point grid):
  *   16  top margin
- *   24  clock / date row
+ *   24  clock / date row (the shared ClockBar, drawn above every screen)
  *   24  gap
  *  416  map card (336 wide, map 304×384 inside); Settings (72×72) top-right
  *   24  gap
@@ -87,8 +87,6 @@ fun HomeScreen(
     val context = LocalContext.current
     val nav by NavRepository.state.collectAsState()
     val gps by GpsTracker.state.collectAsState()
-    val use24h by prefs.use24h.collectAsState()
-    val timeZone by prefs.timeZone.collectAsState()
     val mapVersion by prefs.mapVersion.collectAsState()
     val hasMap = remember(mapVersion) { MapStore.isInstalled(context) }
 
@@ -98,9 +96,8 @@ fun HomeScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        Spacer(Modifier.height(16.dp))
-        TopBar(use24h, timeZone)
-        Spacer(Modifier.height(24.dp))
+        // The clock bar is drawn above every screen (see Root); content starts below it.
+        Spacer(Modifier.height(ContentTop))
 
         // The map card on the left; the Settings button top-right, level with the card's top.
         Row(Modifier.fillMaxWidth().height(416.dp)) {
@@ -140,45 +137,6 @@ fun HomeScreen(
             IconButton(Icons.Rounded.Apps, "Apps", onClick = onOpenApps)
         }
     }
-}
-
-// ---------- Clock and date ----------
-
-@Composable
-private fun TopBar(use24h: Boolean, timeZone: String?) {
-    val now = rememberNow(timeZone)
-    val time = DateTimeFormatter.ofPattern(if (use24h) "HH:mm" else "h:mm a", Locale.ENGLISH).format(now)
-    val date = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH).format(now)
-    Row(
-        Modifier.fillMaxWidth().height(24.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(time, style = Type.clock)
-        Text(date, style = Type.clock)
-    }
-}
-
-/**
- * The real time: the unit's clock corrected by GPS or internet time (see TimeSync),
- * in your chosen time zone. Ticks exactly on each new minute, and updates straight
- * away when a sync corrects it.
- */
-@Composable
-private fun rememberNow(timeZone: String?): ZonedDateTime {
-    val sync by TimeSync.state.collectAsState()
-    val zone = remember(timeZone) {
-        timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
-    }
-    fun current() = Instant.ofEpochMilli(TimeSync.now()).atZone(zone)
-    var now by remember { mutableStateOf(current()) }
-    LaunchedEffect(sync, zone) {
-        while (true) {
-            now = current()
-            delay(60_000L - (TimeSync.now() % 60_000L))
-        }
-    }
-    return now
 }
 
 // ---------- Map card ----------

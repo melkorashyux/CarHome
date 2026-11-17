@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.pressable
 import dev.carhome.launcher.ui.theme.Fg
@@ -54,7 +55,8 @@ fun AppsScreen(title: String, onBack: () -> Unit, onPick: (String) -> Unit) {
     var apps by remember { mutableStateOf<List<AppEntry>?>(null) }
     LaunchedEffect(Unit) { apps = loadApps(context) }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    // Starts below the clock bar, like the home screen.
+    Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
         ScreenHeader(title, onBack)
         Spacer(Modifier.height(24.dp))
 

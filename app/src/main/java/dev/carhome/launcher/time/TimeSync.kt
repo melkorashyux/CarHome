@@ -93,12 +93,21 @@ object TimeSync {
      * (GPS time is the satellite time of the fix; adjust for how old the fix is).
      */
     fun onGpsFix(location: Location) {
-        if (synced && !wantFresh) return
         val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
-        val trueNow = location.time + ageMs
-        if (trueNow > SANE_AFTER_MS) {
+        // Some units stamp fixes with their own (wrong) clock; then this is rejected as too
+        // old, and the satellite time from the chip's NMEA messages is used instead.
+        onSatelliteTime(location.time + ageMs)
+    }
+
+    /**
+     * The real UTC time, straight from the GPS chip (see GpsTracker's NMEA reader), as of now.
+     * The first good one after the car starts sets the clock.
+     */
+    fun onSatelliteTime(utcNowMs: Long) {
+        if (synced && !wantFresh) return
+        if (utcNowMs > SANE_AFTER_MS) {
             wantFresh = false
-            publish(trueNow - System.currentTimeMillis(), "GPS")
+            publish(utcNowMs - System.currentTimeMillis(), "GPS")
             internetJob?.cancel()
         }
     }

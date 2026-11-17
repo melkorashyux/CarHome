@@ -49,6 +49,7 @@ import dev.carhome.launcher.data.Prefs
 import dev.carhome.launcher.data.ImportState
 import dev.carhome.launcher.data.Imports
 import dev.carhome.launcher.map.MapStore
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.files.FileKind
 import dev.carhome.launcher.util.ClickSound
 import dev.carhome.launcher.util.CrashLog
@@ -94,7 +95,8 @@ fun SettingsScreen(
 
     val wallpaperImport by Imports.wallpaper.collectAsState()
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    // Starts below the clock bar, like the home screen.
+    Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
         ScreenHeader("Settings", onBack)
         Spacer(Modifier.height(24.dp))
 
@@ -270,6 +272,14 @@ private fun GpsDiagnostics() {
         else -> "Searching · no satellites heard yet"
     }
     LinkRow("GPS", value, onClick = null)
+    Divider()
+    // The two times the GPS reports, so a unit that stamps fixes with its own clock is easy to spot.
+    val fmt = remember { java.text.SimpleDateFormat("d MMM yyyy HH:mm:ss 'UTC'", java.util.Locale.ENGLISH).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    } }
+    LinkRow("Satellite time", gps.satelliteTimeMs?.let { fmt.format(java.util.Date(it)) } ?: "Not received yet", onClick = null)
+    Divider()
+    LinkRow("Fix timestamp", gps.fixStampMs?.let { fmt.format(java.util.Date(it)) } ?: "No fix yet", onClick = null)
 }
 
 /** The last error Car Home hit, kept on the unit so it can be photographed and fixed. */

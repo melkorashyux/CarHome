@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -21,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.carhome.launcher.location.GpsTracker
 import dev.carhome.launcher.map.MapGuard
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.glass.Backdrop
 import dev.carhome.launcher.ui.glass.LocalBackdrop
 import dev.carhome.launcher.ui.theme.Type
@@ -66,10 +70,18 @@ fun MapScreen(locationGranted: Boolean, onBack: () -> Unit) {
             )
         }
 
+        // A soft dark fade at the top, so the clock bar (drawn above) reads clearly over the map.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(88.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
+        )
+
         // Over the map the glass is plain dark (no wallpaper behind it), so it stays readable.
         CompositionLocalProvider(LocalBackdrop provides Backdrop(tint = 0.6f)) {
-            // Back, top-left.
-            Box(Modifier.align(Alignment.TopStart).padding(24.dp)) {
+            // Back, top-left, below the clock bar.
+            Box(Modifier.align(Alignment.TopStart).padding(start = 24.dp, top = ContentTop)) {
                 IconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onClick = onBack)
             }
 

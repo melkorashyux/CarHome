@@ -7,7 +7,10 @@ import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +55,7 @@ fun OfflineMap(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnReady = rememberUpdatedState(onReady)
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
 
     val mapView = remember {
         // Mark the start, so a crash here can't turn into a crash loop (see MapGuard).
@@ -64,6 +68,7 @@ fun OfflineMap(
                 getMapAsync { map ->
                     try {
                         setUp(context, map, locationGranted, interactive) { currentOnTap.value() }
+                        mapRef = map
                         currentOnReady.value(map)
                     } catch (e: Exception) {
                         CrashLog.record(context, e)
@@ -79,6 +84,27 @@ fun OfflineMap(
     if (mapView == null) {
         LaunchedEffect(Unit) { onFailed() }
         return
+    }
+
+    // Feed Car Home's own GPS fixes to the map's arrow (see setUp): the same GPS that
+    // Settings → Diagnostics shows, so "Fix" there means the arrow moves here.
+    LaunchedEffect(mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+        var previous: android.location.Location? = null
+        GpsTracker.state.collect { gps ->
+            val fix = gps.last
+            // Satellite counts update often; only move the arrow for a new position.
+            if (gps.lastIsLive && fix != null && fix !== previous) {
+                previous = fix
+                try {
+                    if (map.locationComponent.isLocationComponentActivated) {
+                        map.locationComponent.forceLocationUpdate(fix)
+                    }
+                } catch (e: Exception) {
+                    // Style still loading; the next fix will land.
+                }
+            }
+        }
     }
 
     // Keep the map's own lifecycle in step with the screen's.
@@ -150,17 +176,20 @@ private fun setUp(context: Context, map: MapLibreMap, locationGranted: Boolean, 
         if (!locationGranted) return@setStyle
         try {
             map.locationComponent.apply {
+                // No separate location engine: on some units it asks a location source that
+                // doesn't exist (like network location) and never gets a position. The arrow
+                // is fed from GpsTracker instead (see OfflineMap).
                 activateLocationComponent(
                     LocationComponentActivationOptions.builder(context, style)
-                        .useDefaultLocationEngine(true)
+                        .useDefaultLocationEngine(false)
                         .build()
                 )
                 isLocationComponentEnabled = true
                 cameraMode = CameraMode.TRACKING_GPS // follows you, heading-up
                 renderMode = RenderMode.GPS          // navigation arrow
                 zoomWhileTracking(16.0)
-                // Show the arrow at the last known position until GPS has a fix.
-                start?.let { forceLocationUpdate(it) }
+                // Show the arrow at the latest fix, or where the car was parked until GPS has one.
+                (GpsTracker.state.value.last ?: start)?.let { forceLocationUpdate(it) }
             }
         } catch (e: Exception) {
             // No GPS on this unit: the map still shows, centered on the last position.

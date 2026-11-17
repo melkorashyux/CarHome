@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.carhome.launcher.data.Prefs
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.rowPress
@@ -65,7 +66,8 @@ fun TimeZoneScreen(prefs: Prefs, onBack: () -> Unit) {
         if (index > 0) listState.scrollToItem(index - 1)
     }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    // Starts below the clock bar, like the home screen.
+    Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
         ScreenHeader("Time zone", onBack)
         Spacer(Modifier.height(24.dp))
         GlassSurface(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopStart) {

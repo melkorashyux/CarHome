@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
 import dev.carhome.launcher.ui.glass.rowPress
@@ -84,7 +85,8 @@ fun FilePickerScreen(kind: FileKind, onBack: () -> Unit, onPicked: (File) -> Uni
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    // Starts below the clock bar, like the home screen.
+    Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
         ScreenHeader(kind.title, goUp)
         Spacer(Modifier.height(8.dp))
         Text(
