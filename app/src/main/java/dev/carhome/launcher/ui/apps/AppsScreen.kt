@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.glass.GlassSurface
+import dev.carhome.launcher.ui.glass.OnWallpaper
 import dev.carhome.launcher.ui.glass.pressable
 import dev.carhome.launcher.ui.theme.Fg
 import dev.carhome.launcher.ui.theme.Type
@@ -107,7 +108,7 @@ fun ScreenHeader(title: String, onBack: () -> Unit) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Fg, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.width(16.dp))
-        Text(title, style = Type.pageTitle)
+        OnWallpaper { Text(title, style = Type.pageTitle) }
     }
 }
 

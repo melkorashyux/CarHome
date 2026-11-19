@@ -58,6 +58,7 @@ import dev.carhome.launcher.location.GpsTracker
 import dev.carhome.launcher.time.TimeSync
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
+import dev.carhome.launcher.ui.glass.OnWallpaper
 import dev.carhome.launcher.ui.glass.LocalBackdrop
 import dev.carhome.launcher.ui.glass.Pill
 import dev.carhome.launcher.ui.glass.Rounded8
@@ -279,6 +280,35 @@ private fun GpsDiagnostics() {
     }
     LinkRow("GPS", value, onClick = null)
     Divider()
+    val signal = gps.signalDbHz?.let {
+        val word = when {
+            it >= 30f -> "good"
+            it >= 25f -> "fair"
+            else -> "weak (roof, garage or buried antenna?)"
+        }
+        "${it.toInt()} dB-Hz · $word"
+    } ?: "No satellites heard"
+    LinkRow("Signal", signal, onClick = null)
+    Divider()
+    // Tools for a GPS that hears satellites but never gets a position.
+    val context = LocalContext.current
+    var gpsMessage by remember { mutableStateOf<String?>(null) }
+    LinkRow("Reset GPS data", gpsMessage?.takeIf { it.startsWith("Reset") } ?: "Start the search fresh", onClick = {
+        gpsMessage = if (GpsTracker.resetData(context)) {
+            "Reset · allow 5–15 min outdoors"
+        } else {
+            "Reset not supported on this unit"
+        }
+    })
+    Divider()
+    LinkRow("Send time to GPS", gpsMessage?.takeIf { it.startsWith("Sent") || it.startsWith("Couldn") } ?: "Needs internet (hotspot)", onClick = {
+        gpsMessage = if (GpsTracker.sendTimeAndAssistance(context)) {
+            "Sent · the fix should come faster"
+        } else {
+            "Couldn't send on this unit"
+        }
+    })
+    Divider()
     LinkRow("Positions from Android", "${gps.androidFixes} · last ${ago(gps.lastAndroidFixAt)}", onClick = null)
     Divider()
     LinkRow("Positions from GPS chip", "${gps.chipFixes} · last ${ago(gps.lastChipFixAt)}", onClick = null)
@@ -409,12 +439,12 @@ private fun UpdateRow() {
 @Composable
 private fun Section(title: String, footer: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Column {
-        Text(title, style = Type.sectionHeader, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
+        OnWallpaper { Text(title, style = Type.sectionHeader, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)) }
         GlassSurface(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopStart) {
             Column(Modifier.fillMaxWidth(), content = content)
         }
         if (footer != null) {
-            Text(footer, style = Type.body, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+            OnWallpaper { Text(footer, style = Type.body, modifier = Modifier.padding(start = 16.dp, top = 8.dp)) }
         }
     }
 }

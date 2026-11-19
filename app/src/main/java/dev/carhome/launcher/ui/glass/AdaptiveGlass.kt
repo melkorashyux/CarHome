@@ -34,6 +34,15 @@ object AdaptiveGlass {
         return MAX_ALPHA
     }
 
+    /**
+     * For text sitting straight on the wallpaper (clock, page titles, section labels):
+     * true when dark text reads better than white on the photo behind it.
+     */
+    fun prefersDarkText(b: Backdrop, x: Float, y: Float, w: Int, h: Int): Boolean {
+        val behind = averageBehind(b, x, y, w, h) ?: return false
+        return contrast(behind, DARK_TEXT) > contrast(behind, LIGHT_TEXT)
+    }
+
     /** The average color of the frosted wallpaper behind a rectangle, or null if there isn't one. */
     private fun averageBehind(b: Backdrop, x: Float, y: Float, w: Int, h: Int): Int? {
         val img = b.blurred ?: return null

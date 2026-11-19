@@ -28,6 +28,11 @@ data class GpsState(
     val satellitesUsed: Int = 0,
     /** Satellites it can hear at all. 0 for long usually means an antenna problem. */
     val satellitesSeen: Int = 0,
+    /**
+     * Average signal of the 4 strongest satellites, in dB-Hz. Around 30+ locks easily;
+     * under about 25 is too weak to get a position (roof, garage, buried antenna).
+     */
+    val signalDbHz: Float? = null,
     /** The latest real fix, or the position saved when the car was last parked. */
     val last: Location? = null,
     /** True when [last] is a fresh fix, false when it's the saved parking position. */
@@ -117,10 +122,16 @@ object GpsTracker {
     private val gnssCallback = object : GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: GnssStatus) {
             var used = 0
-            for (i in 0 until status.satelliteCount) if (status.usedInFix(i)) used++
+            val signals = ArrayList<Float>(status.satelliteCount)
+            for (i in 0 until status.satelliteCount) {
+                if (status.usedInFix(i)) used++
+                signals.add(status.getCn0DbHz(i))
+            }
+            val top4 = signals.sortedDescending().take(4)
             _state.value = _state.value.copy(
                 satellitesUsed = used,
                 satellitesSeen = status.satelliteCount,
+                signalDbHz = if (top4.isEmpty()) null else top4.average().toFloat(),
             )
         }
 
@@ -228,6 +239,31 @@ object GpsTracker {
         val minutes = value.substring(degreeDigits).toDoubleOrNull() ?: return null
         val decimal = degrees + minutes / 60.0
         return if (hemisphere == "S" || hemisphere == "W") -decimal else decimal
+    }
+
+    /**
+     * Clears the satellite data the GPS chip has stored. Data saved while the unit's date was
+     * wrong can keep the chip searching in the wrong places; after this it starts fresh
+     * (allow 5–15 minutes outdoors with a clear sky). Returns false if the unit refused.
+     */
+    fun resetData(context: Context): Boolean = command(context, "delete_aiding_data")
+
+    /**
+     * Asks Android to fetch the correct time from the internet and hand it straight to the GPS
+     * chip (and, on chips that support it, satellite predictions). This works even when the
+     * unit's own date is wrong. Needs internet, e.g. your phone's hotspot.
+     */
+    fun sendTimeAndAssistance(context: Context): Boolean {
+        val time = command(context, "force_time_injection")
+        val assistance = command(context, "force_xtra_injection")
+        return time || assistance
+    }
+
+    private fun command(context: Context, name: String): Boolean = try {
+        context.getSystemService(LocationManager::class.java)
+            ?.sendExtraCommand(LocationManager.GPS_PROVIDER, name, Bundle()) == true
+    } catch (e: Exception) {
+        false
     }
 
     private fun save(context: Context, l: Location) {

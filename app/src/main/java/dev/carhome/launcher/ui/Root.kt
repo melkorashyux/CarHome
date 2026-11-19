@@ -192,7 +192,7 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                         )
                     }
                 }
-                ClockBar(prefs)
+                ClockBar(prefs, overMap = screen == Screen.Map)
             }
         }
     }

@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat
 import dev.carhome.launcher.ui.common.ContentTop
 import dev.carhome.launcher.ui.apps.ScreenHeader
 import dev.carhome.launcher.ui.glass.GlassSurface
+import dev.carhome.launcher.ui.glass.OnWallpaper
 import dev.carhome.launcher.ui.glass.rowPress
 import dev.carhome.launcher.ui.theme.Fg
 import dev.carhome.launcher.ui.theme.Muted
@@ -89,11 +90,12 @@ fun FilePickerScreen(kind: FileKind, onBack: () -> Unit, onPicked: (File) -> Uni
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
         ScreenHeader(kind.title, goUp)
         Spacer(Modifier.height(8.dp))
-        Text(
-            folder?.absolutePath ?: "Plug in your USB stick, then choose it below",
-            style = Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 72.dp),
-        )
+        OnWallpaper(Modifier.padding(start = 72.dp)) {
+            Text(
+                folder?.absolutePath ?: "Plug in your USB stick, then choose it below",
+                style = Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         GlassSurface(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopStart) {

@@ -8,6 +8,8 @@
     <!-- GPS: your position on the offline map, and the correct time without internet. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Lets Settings → Diagnostics reset the GPS chip's data and send it the correct time. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
 
     <!-- Car Home's own file browser reads map files and wallpapers from USB sticks. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />

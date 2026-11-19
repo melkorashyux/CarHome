@@ -47,6 +47,7 @@ object TimeSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var internetJob: Job? = null
     private var internetAllowed = false
+    private var gpsHelped = false
     /** Set by "Sync now": take the next GPS fix even though we're already synced. */
     private var wantFresh = false
 
@@ -69,6 +70,11 @@ object TimeSync {
         }
         // GPS stays on for the whole drive (GpsTracker); its first fix sets the clock.
         GpsTracker.start(context)
+        // With Internet time on, also hand the correct time to the GPS chip once per drive,
+        // so it isn't searching with the unit's wrong date.
+        if (allowInternet && !gpsHelped) {
+            gpsHelped = GpsTracker.sendTimeAndAssistance(context)
+        }
         if (synced) return
         if (allowInternet && internetJob?.isActive != true) {
             internetJob = scope.launch {
