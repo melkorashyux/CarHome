@@ -23,6 +23,7 @@ class Prefs(context: Context) {
     private val _internetTime = MutableStateFlow(sp.getBoolean(KEY_NET_TIME, false))
     private val _buttonSounds = MutableStateFlow(sp.getBoolean(KEY_SOUNDS, true))
     private val _lightGlass = MutableStateFlow(sp.getBoolean(KEY_LIGHT, false))
+    private val _wallpaperChoice = MutableStateFlow(sp.getString(KEY_WALLPAPER_CHOICE, null))
     private val slots = AppSlot.entries.associateWith { MutableStateFlow(sp.getString(it.key, it.default)) }
 
     /** 0..1; 0.5 matches the Figma design (black at 20%). */
@@ -41,6 +42,8 @@ class Prefs(context: Context) {
     val buttonSounds: StateFlow<Boolean> = _buttonSounds.asStateFlow()
     /** Glass color: false = Dark (black at 20%, the default), true = Light (white at 20%). */
     val lightGlass: StateFlow<Boolean> = _lightGlass.asStateFlow()
+    /** "builtin:0"…"builtin:5" for a built-in wallpaper, "custom" for your own photo. */
+    val wallpaperChoice: StateFlow<String?> = _wallpaperChoice.asStateFlow()
 
     fun slot(slot: AppSlot): StateFlow<String?> = slots.getValue(slot).asStateFlow()
 
@@ -76,6 +79,12 @@ class Prefs(context: Context) {
         sp.edit().putLong(KEY_MAP, v).apply()
     }
 
+    fun setWallpaperChoice(choice: String) {
+        _wallpaperChoice.value = choice
+        sp.edit().putString(KEY_WALLPAPER_CHOICE, choice).apply()
+        bumpWallpaper()
+    }
+
     fun setLightGlass(value: Boolean) {
         _lightGlass.value = value
         sp.edit().putBoolean(KEY_LIGHT, value).apply()
@@ -106,5 +115,6 @@ class Prefs(context: Context) {
         const val KEY_NET_TIME = "internetTime"
         const val KEY_SOUNDS = "buttonSounds"
         const val KEY_LIGHT = "lightGlass"
+        const val KEY_WALLPAPER_CHOICE = "wallpaperChoice"
     }
 }

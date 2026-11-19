@@ -44,6 +44,7 @@ import dev.carhome.launcher.ui.home.HomeScreen
 import dev.carhome.launcher.ui.home.MapScreen
 import dev.carhome.launcher.ui.settings.SettingsScreen
 import dev.carhome.launcher.ui.settings.TimeZoneScreen
+import dev.carhome.launcher.ui.settings.WallpaperScreen
 import dev.carhome.launcher.ui.theme.DesignCanvas
 import dev.carhome.launcher.ui.theme.Fallback
 import dev.carhome.launcher.util.Launch
@@ -55,7 +56,8 @@ sealed interface Screen {
     data object Settings : Screen
     data object TimeZone : Screen
     data object Map : Screen
-    data class PickFile(val kind: FileKind) : Screen
+    data object Wallpapers : Screen
+    data class PickFile(val kind: FileKind, val returnTo: Screen) : Screen
     data class PickApp(val slot: AppSlot, val returnTo: Screen) : Screen
 }
 
@@ -68,7 +70,8 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
     val wallpaperVersion by prefs.wallpaperVersion.collectAsState()
     val intensity by prefs.glass.collectAsState()
     var source by remember { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(wallpaperVersion) { source = Wallpaper.load(context) }
+    val wallpaperChoice by prefs.wallpaperChoice.collectAsState()
+    LaunchedEffect(wallpaperVersion, wallpaperChoice) { source = Wallpaper.load(context, wallpaperChoice) }
     val sharp = remember(source) { source?.asImageBitmap() }
     var blurred by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(source, intensity) { blurred = source?.let { Wallpaper.blurred(it, intensity) } }
@@ -78,7 +81,8 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
     BackHandler(enabled = screen != Screen.Home) {
         screen = when (val s = screen) {
             is Screen.PickApp -> s.returnTo
-            Screen.TimeZone, is Screen.PickFile -> Screen.Settings
+            Screen.TimeZone, Screen.Wallpapers -> Screen.Settings
+            is Screen.PickFile -> s.returnTo
             else -> Screen.Home
         }
     }
@@ -149,18 +153,25 @@ fun CarHomeRoot(prefs: Prefs, screenState: MutableState<Screen>, locationGranted
                             onBack = { screen = Screen.Home },
                             onPick = { slot -> screen = Screen.PickApp(slot, Screen.Settings) },
                             onOpenTimeZone = { screen = Screen.TimeZone },
-                            onPickFile = { kind -> screen = Screen.PickFile(kind) },
+                            onPickFile = { kind -> screen = Screen.PickFile(kind, Screen.Settings) },
+                            onOpenWallpapers = { screen = Screen.Wallpapers },
+                        )
+
+                        Screen.Wallpapers -> WallpaperScreen(
+                            prefs = prefs,
+                            onBack = { screen = Screen.Settings },
+                            onChoosePhoto = { screen = Screen.PickFile(FileKind.Wallpaper, Screen.Wallpapers) },
                         )
 
                         is Screen.PickFile -> FilePickerScreen(
                             kind = s.kind,
-                            onBack = { screen = Screen.Settings },
+                            onBack = { screen = s.returnTo },
                             onPicked = { file ->
                                 when (s.kind) {
                                     FileKind.Map -> Imports.importMap(context, file, prefs)
                                     FileKind.Wallpaper -> Imports.importWallpaper(context, file, prefs)
                                 }
-                                screen = Screen.Settings
+                                screen = s.returnTo
                             },
                         )
 

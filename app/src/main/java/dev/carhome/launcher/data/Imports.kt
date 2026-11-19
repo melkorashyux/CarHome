@@ -54,9 +54,9 @@ object Imports {
         val app = context.applicationContext
         _wallpaper.value = ImportState.Copying(null)
         scope.launch {
-            val ok = Wallpaper.importFrom(app, Uri.fromFile(file))
-            if (ok) prefs.bumpWallpaper()
-            _wallpaper.value = if (ok) ImportState.Idle else ImportState.Error("Couldn't read that image")
+            val choice = Wallpaper.importFrom(app, Uri.fromFile(file))
+            if (choice != null) prefs.setWallpaperChoice(choice) // switch to the photo you just added
+            _wallpaper.value = if (choice != null) ImportState.Idle else ImportState.Error("Couldn't read that image")
         }
     }
 }

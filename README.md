@@ -59,12 +59,16 @@ Pick one:
 
 ---
 
-## Default wallpaper
+## Wallpapers
 
-Put one image at `app/src/main/res/drawable-nodpi/wallpaper_default.jpg` (the name must be exactly
-`wallpaper_default`, lowercase, `.jpg` or `.png`). Best size: **2048×1200**, the 2x export of your
-1024×600 frame. It shows until you pick a photo in Settings → Wallpaper, and
-Settings → **Use default wallpaper** switches back to it.
+Settings → Display → Wallpaper shows the built-in wallpaper and **My wallpapers**: your own
+photos, imported from a USB stick with "Add from USB or storage". Add as many as you like and
+tap a preview to switch; the × removes one. Your photos stay only on the unit, so nothing is
+published with the app.
+
+The built-in wallpaper is `app/src/main/res/drawable-nodpi/wallpaper_default.jpeg`. Because the
+repository and releases are public, only put images there that you have the right to share
+(your own photos, or ones with a free license). `wallpaper_1` … `wallpaper_5` are supported too.
 
 ## Software updates from the car
 

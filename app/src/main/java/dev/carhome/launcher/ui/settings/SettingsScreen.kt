@@ -81,6 +81,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onPick: (AppSlot) -> Unit,
     onOpenTimeZone: () -> Unit,
+    onOpenWallpapers: () -> Unit,
     onPickFile: (FileKind) -> Unit,
 ) {
     val context = LocalContext.current
@@ -89,11 +90,7 @@ fun SettingsScreen(
     val use24h by prefs.use24h.collectAsState()
     val media by MediaRepository.state.collectAsState()
     val wallpaper = LocalBackdrop.current.wallpaper
-    val wallpaperVersion by prefs.wallpaperVersion.collectAsState()
-    val hasCustomWallpaper = remember(wallpaperVersion) { Wallpaper.hasCustom(context) }
-    val hasDefaultWallpaper = remember { Wallpaper.defaultResId(context) != null }
-
-    val wallpaperImport by Imports.wallpaper.collectAsState()
+    val wallpaperChoice by prefs.wallpaperChoice.collectAsState()
 
     // Starts below the clock bar, like the home screen.
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = ContentTop, bottom = 24.dp)) {
@@ -108,26 +105,17 @@ fun SettingsScreen(
                 "Display",
                 footer = "Glass adapts to your wallpaper: it stays as clear as your setting allows, and only gets stronger where needed to keep text readable.",
             ) {
-                val wallpaperValue = when (val w = wallpaperImport) {
-                    is ImportState.Copying -> "Loading…"
-                    is ImportState.Error -> "${w.message} · Try again"
-                    ImportState.Idle -> "Choose photo"
+                val wallpaperValue = if (Wallpaper.photoFor(context, wallpaperChoice) != null) {
+                    "My wallpaper"
+                } else {
+                    "Wallpaper ${Wallpaper.builtInIndex(context, wallpaperChoice) + 1}"
                 }
-                LinkRow("Wallpaper", wallpaperValue, onClick = { onPickFile(FileKind.Wallpaper) }) {
+                LinkRow("Wallpaper", wallpaperValue, onClick = onOpenWallpapers) {
                     if (wallpaper != null) {
                         Image(wallpaper, null, Modifier.size(96.dp, 56.dp).clip(Rounded8), contentScale = ContentScale.Crop)
                     } else {
                         Box(Modifier.size(96.dp, 56.dp).clip(Rounded8).background(Color.White.copy(alpha = 0.08f)))
                     }
-                }
-                if (hasCustomWallpaper && hasDefaultWallpaper) {
-                    Divider()
-                    LinkRow("Use default wallpaper", null, onClick = {
-                        scope.launch {
-                            Wallpaper.resetToDefault(context)
-                            prefs.bumpWallpaper()
-                        }
-                    })
                 }
                 Divider()
                 val lightGlass by prefs.lightGlass.collectAsState()
