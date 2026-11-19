@@ -262,16 +262,35 @@ private fun OfflineMapRow(prefs: Prefs, onPickFile: (FileKind) -> Unit) {
     }
 }
 
-/** What the GPS receiver is doing: useful when the map or clock takes long to start. */
+/**
+ * What the GPS is doing: useful when the map or clock doesn't update. "Position updates"
+ * shows which source is actually delivering: Android's positions, or the GPS chip's own
+ * messages (which Car Home falls back to when Android's don't arrive).
+ */
 @Composable
 private fun GpsDiagnostics() {
     val gps by GpsTracker.state.collectAsState()
+    // Refresh the "x s ago" texts every second.
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            tick++
+        }
+    }
+    val now = remember(tick) { SystemClock.elapsedRealtime() }
+    fun ago(at: Long?): String = if (at == null) "never" else "${((now - at) / 1000).coerceAtLeast(0)} s ago"
+
     val value = when {
-        gps.hasFix -> "Fix · using ${gps.satellitesUsed} of ${gps.satellitesSeen} satellites"
-        gps.satellitesSeen > 0 -> "Searching · hears ${gps.satellitesSeen} satellites"
+        gps.hasFix -> "Fix · ${gps.satellitesUsed} of ${gps.satellitesSeen} satellites in use"
+        gps.satellitesSeen > 0 -> "No position · hears ${gps.satellitesSeen}, using ${gps.satellitesUsed}"
         else -> "Searching · no satellites heard yet"
     }
     LinkRow("GPS", value, onClick = null)
+    Divider()
+    LinkRow("Positions from Android", "${gps.androidFixes} · last ${ago(gps.lastAndroidFixAt)}", onClick = null)
+    Divider()
+    LinkRow("Positions from GPS chip", "${gps.chipFixes} · last ${ago(gps.lastChipFixAt)}", onClick = null)
     Divider()
     // The two times the GPS reports, so a unit that stamps fixes with its own clock is easy to spot.
     val fmt = remember { java.text.SimpleDateFormat("d MMM yyyy HH:mm:ss 'UTC'", java.util.Locale.ENGLISH).apply {

@@ -22,7 +22,7 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 data class GpsState(
-    /** True while fixes are arriving. */
+    /** True while live positions are actually arriving (within the last 5 s). */
     val hasFix: Boolean = false,
     /** Satellites the receiver is using for the fix right now. */
     val satellitesUsed: Int = 0,
@@ -36,6 +36,12 @@ data class GpsState(
     val fixStampMs: Long? = null,
     /** For Diagnostics: the satellite UTC time from the chip's own messages, when last read. */
     val satelliteTimeMs: Long? = null,
+    /** For Diagnostics: positions received from Android, and when the last one came (elapsedRealtime). */
+    val androidFixes: Int = 0,
+    val lastAndroidFixAt: Long? = null,
+    /** For Diagnostics: positions read from the chip's own messages, and when the last one came. */
+    val chipFixes: Int = 0,
+    val lastChipFixAt: Long? = null,
 )
 
 /**
@@ -82,6 +88,7 @@ object GpsTracker {
                 // No NMEA on this unit; fix timestamps are still used.
             }
             running = true
+            main.postDelayed(staleCheck, 2_000L)
         } catch (e: Exception) {
             // No GPS on this unit.
         }
@@ -89,14 +96,14 @@ object GpsTracker {
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            _state.value = _state.value.copy(hasFix = true, last = location, lastIsLive = true, fixStampMs = location.time)
+            val s = _state.value
+            _state.value = s.copy(
+                fixStampMs = location.time,
+                androidFixes = s.androidFixes + 1,
+                lastAndroidFixAt = SystemClock.elapsedRealtime(),
+            )
             TimeSync.onGpsFix(location)
-            // Remember where we are about every 30 s, so the next start opens here.
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastSavedAt > 30_000L) {
-                lastSavedAt = now
-                appContext?.let { save(it, location) }
-            }
+            publishPosition(location)
         }
 
         @Deprecated("Required on Android 10")
@@ -114,12 +121,11 @@ object GpsTracker {
             _state.value = _state.value.copy(
                 satellitesUsed = used,
                 satellitesSeen = status.satelliteCount,
-                hasFix = used >= 3,
             )
         }
 
         override fun onStopped() {
-            _state.value = _state.value.copy(hasFix = false, satellitesUsed = 0)
+            _state.value = _state.value.copy(satellitesUsed = 0)
         }
     }
 
@@ -129,13 +135,66 @@ object GpsTracker {
      * "A" means the receiver has a valid fix, so its time is trustworthy.
      */
     private val nmeaListener = OnNmeaMessageListener { message, _ ->
-        val utc = parseRmc(message) ?: return@OnNmeaMessageListener
-        _state.value = _state.value.copy(satelliteTimeMs = utc)
-        TimeSync.onSatelliteTime(utc)
+        val rmc = parseRmc(message) ?: return@OnNmeaMessageListener
+        val now = SystemClock.elapsedRealtime()
+        val s = _state.value
+        _state.value = s.copy(satelliteTimeMs = rmc.utcMs, chipFixes = s.chipFixes + 1, lastChipFixAt = now)
+        TimeSync.onSatelliteTime(rmc.utcMs)
+
+        // Some units never pass finished positions on to apps, even with a fix. Then the
+        // position comes from the chip's own message instead. If Android's positions are
+        // arriving (within the last 3 s), those are used and this one is skipped.
+        val androidRecent = s.lastAndroidFixAt?.let { now - it < 3_000L } == true
+        if (!androidRecent) publishPosition(rmc.toLocation())
     }
 
-    /** UTC milliseconds from an RMC sentence with a valid fix, or null. */
-    private fun parseRmc(sentence: String): Long? {
+    private var lastPositionAt = 0L
+
+    /** "Fix" ends when no position has arrived for 5 s (checked every 2 s). */
+    private val staleCheck = object : Runnable {
+        override fun run() {
+            if (_state.value.hasFix && SystemClock.elapsedRealtime() - lastPositionAt > 5_000L) {
+                _state.value = _state.value.copy(hasFix = false)
+            }
+            main.postDelayed(this, 2_000L)
+        }
+    }
+
+    /** One live position, from either source: show it, and remember it every ~30 s. */
+    private fun publishPosition(location: Location) {
+        lastPositionAt = SystemClock.elapsedRealtime()
+        _state.value = _state.value.copy(hasFix = true, last = location, lastIsLive = true)
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSavedAt > 30_000L) {
+            lastSavedAt = now
+            appContext?.let { save(it, location) }
+        }
+    }
+
+    /** What an RMC sentence says: satellite time, position, speed and direction. */
+    private class Rmc(
+        val utcMs: Long,
+        val lat: Double,
+        val lon: Double,
+        val speedMps: Float?,
+        val courseDeg: Float?,
+    ) {
+        fun toLocation() = Location(LocationManager.GPS_PROVIDER).also {
+            it.latitude = lat
+            it.longitude = lon
+            speedMps?.let { v -> it.speed = v }
+            courseDeg?.let { c -> it.bearing = c }
+            it.accuracy = 10f
+            it.time = utcMs
+            it.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        }
+    }
+
+    /**
+     * Reads "$GNRMC,hhmmss.ss,A,ddmm.mmmm,N,dddmm.mmmm,E,knots,course,ddmmyy,...".
+     * Only sentences marked "A" (valid fix) are used.
+     */
+    private fun parseRmc(sentence: String): Rmc? {
         if (sentence.length < 7 || !sentence.startsWith("$") || sentence.substring(3, 6) != "RMC") return null
         val f = sentence.substringBefore('*').split(',')
         if (f.size < 10 || f[2] != "A") return null
@@ -150,11 +209,25 @@ object GpsTracker {
             val dd = date.substring(0, 2).toInt()
             val mo = date.substring(2, 4).toInt()
             val yy = 2000 + date.substring(4, 6).toInt()
-            LocalDateTime.of(yy, mo, dd, hh, mi, ss, millis * 1_000_000)
+            val utc = LocalDateTime.of(yy, mo, dd, hh, mi, ss, millis * 1_000_000)
                 .toInstant(ZoneOffset.UTC).toEpochMilli()
+            val lat = coordinate(f[3], f[4], degreeDigits = 2) ?: return null
+            val lon = coordinate(f[5], f[6], degreeDigits = 3) ?: return null
+            val speed = f.getOrNull(7)?.toFloatOrNull()?.let { it * 0.514444f } // knots → m/s
+            val course = f.getOrNull(8)?.toFloatOrNull()
+            Rmc(utc, lat, lon, speed, course)
         } catch (e: Exception) {
             null
         }
+    }
+
+    /** "3002.6640","N" → 30.04440 (degrees then minutes, as NMEA writes them). */
+    private fun coordinate(value: String, hemisphere: String, degreeDigits: Int): Double? {
+        if (value.length <= degreeDigits) return null
+        val degrees = value.substring(0, degreeDigits).toDoubleOrNull() ?: return null
+        val minutes = value.substring(degreeDigits).toDoubleOrNull() ?: return null
+        val decimal = degrees + minutes / 60.0
+        return if (hemisphere == "S" || hemisphere == "W") -decimal else decimal
     }
 
     private fun save(context: Context, l: Location) {
