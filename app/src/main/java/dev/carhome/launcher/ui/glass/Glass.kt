@@ -98,10 +98,24 @@ private val InsetEdge = Brush.linearGradient(
 fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Panel): Modifier = composed {
     val backdrop = LocalBackdrop.current
     var position by remember { mutableStateOf(Offset.Zero) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    // Adaptive strength: worked out once per spot (re-checked only if the panel moves
+    // by more than ~8 px, e.g. while scrolling), not on every frame.
+    val rel = position - backdrop.origin
+    val alpha = remember(
+        backdrop.blurred, backdrop.imageOffset, backdrop.imageSize, backdrop.light, backdrop.tint,
+        rel.x.roundToInt() / 8, rel.y.roundToInt() / 8, size,
+    ) {
+        if (style == GlassStyle.Panel) AdaptiveGlass.alphaFor(backdrop, rel.x, rel.y, size.width, size.height)
+        else backdrop.tint
+    }
 
     val filled = when (style) {
         GlassStyle.Panel -> this
-            .onGloballyPositioned { position = it.positionInWindow() }
+            .onGloballyPositioned {
+                position = it.positionInWindow()
+                size = it.size
+            }
             .clip(shape)
             .drawBehind {
                 val img = backdrop.blurred
@@ -121,7 +135,7 @@ fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Panel): Modifier
                         filterQuality = FilterQuality.Medium,
                     )
                 }
-                drawRect((if (backdrop.light) Color.White else Color.Black).copy(alpha = backdrop.tint))
+                drawRect((if (backdrop.light) Color.White else Color.Black).copy(alpha = alpha))
             }
 
         GlassStyle.Inset -> this

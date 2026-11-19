@@ -104,7 +104,10 @@ fun SettingsScreen(
             Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Section("Display") {
+            Section(
+                "Display",
+                footer = "Glass adapts to your wallpaper: it stays as clear as your setting allows, and only gets stronger where needed to keep text readable.",
+            ) {
                 val wallpaperValue = when (val w = wallpaperImport) {
                     is ImportState.Copying -> "Loading…"
                     is ImportState.Error -> "${w.message} · Try again"

@@ -32,7 +32,7 @@ data class Palette(val fg: Color, val muted: Color, val placeholder: Color)
 /** Colors from the Figma file. */
 val DarkPalette = Palette(fg = Color(0xFFF3F3F3), muted = Color(0xFF9A9A9A), placeholder = Color(0xFF707070))
 /** For Light glass: near-black text, iOS-style grays. */
-val LightPalette = Palette(fg = Color(0xFF1C1C1E), muted = Color(0xFF4A4A4F), placeholder = Color(0xFF6E6E73))
+val LightPalette = Palette(fg = Color(0xFF1C1C1E), muted = Color(0xFF3A3A3E), placeholder = Color(0xFF5A5A5F))
 
 val LocalPalette = staticCompositionLocalOf { DarkPalette }
 

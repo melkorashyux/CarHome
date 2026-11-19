@@ -12,8 +12,8 @@ android {
         applicationId = "dev.carhome.launcher"
         minSdk = 29          // Android 10, the head unit's version
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.4.2"
+        versionCode = 11
+        versionName = "0.4.3"
 
         // Only the processor types car head units use. Keeps the map engine's
         // native code (one copy per type) from bloating the APK.
